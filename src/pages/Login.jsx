@@ -39,15 +39,19 @@ export default function Login() {
 
   useEffect(() => {
     if (token && user) {
-      if (user.role === 'ATTENDEE') {
-        navigate('/dashboard', { replace: true });
+      if (user.role === 'ADMIN') {
+        navigate('/admin', { replace: true });
+      } else if (user.role === 'ORGANIZER') {
+        if (user.verified === false) {
+          return;
+        }
+        navigate('/organizer', { replace: true });
       } else {
-        navigate('/', { replace: true });
+        navigate('/dashboard', { replace: true });
       }
     }
-  }, [token, user]);
+  }, [token, user, navigate]);
 
-  //Helper functions
   const handleModeSwitch = (newMode) => {
     if (mode === 'otp' && otpSent) return;
     setMode(newMode);
@@ -120,7 +124,11 @@ export default function Login() {
           </div>
         </div>
 
-        {error && <div className="form-error-banner">{error}</div>}
+        {(error || (token && user?.role === 'ORGANIZER' && user?.verified === false ? 'Your organizer account is not verified yet.' : '')) && (
+          <div className="form-error-banner">
+            {error || 'Your organizer account is not verified yet.'}
+          </div>
+        )}
 
         {mode === 'password' && (
           <form onSubmit={handlePasswordLogin} className="auth-form" noValidate>
@@ -218,7 +226,10 @@ export default function Login() {
         )}
 
         <p className="auth-switch">
-          Don't have an account? <Link to="/register">Sign up</Link>
+          Don&apos;t have an account? <Link to="/register">Sign up</Link>
+        </p>
+        <p className="auth-switch" style={{ marginTop: 4 }}>
+          Want to host events? <Link to="/register/organizer">Register as Organizer</Link>
         </p>
       </div>
     </div>

@@ -15,7 +15,7 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAlert, setShowAlert] = useState(false);
-  const [activeBooking, setActiveBooking] = useState(null);
+  const [activeBooking, setActiveBooking] = useState(null); // pending/incomplete booking
 
   useEffect(() => {
     // 1. Fetch Event Details
@@ -23,7 +23,7 @@ export default function EventDetail() {
       .then((res) => { setEvent(res.data); setLoading(false); })
       .catch(() => { setError('Could not load event details.'); setLoading(false); });
 
-    // 2. Check for active pending booking if logged in
+    // 2. Check for active pending booking if logged in (to show Resume Payment)
     if (token && user?.role === 'ATTENDEE') {
         axiosInstance.get(`/bookings/event/${id}/active`)
             .then(res => setActiveBooking(res.data))
@@ -33,12 +33,11 @@ export default function EventDetail() {
 
   const handleBookClick = () => {
     if (!token || user?.role !== 'ATTENDEE') { setShowAlert(true); return; }
-    
     if (activeBooking) {
-        // Resume Payment Flow
+        // Resume existing PENDING booking
         navigate(`/booking/${id}`, { state: { resumeBookingId: activeBooking.id } });
     } else {
-        // New Booking Flow
+        // New booking
         navigate(`/booking/${id}`);
     }
   };
@@ -172,12 +171,12 @@ export default function EventDetail() {
               <hr className="booking-divider" />
 
               <div className="booking-footer" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Button 
-                    onClick={handleBookClick} 
-                    style={{ width: '100%' }}
-                    variant={activeBooking ? 'secondary' : 'primary'}
+                <Button
+                  onClick={handleBookClick}
+                  style={{ width: '100%' }}
+                  variant={activeBooking ? 'secondary' : 'primary'}
                 >
-                    {activeBooking ? 'Resume Payment' : 'Book Tickets'}
+                  {activeBooking ? 'Resume Payment' : 'Book Tickets'}
                 </Button>
                 {!token && <p className="booking-hint">Login as an attendee to book</p>}
                 {token && user?.role !== 'ATTENDEE' && <p className="booking-hint">Only attendees can book tickets</p>}

@@ -6,10 +6,30 @@ const getValidToken = () => {
   return token;
 };
 
+const buildUserWithOrganizerStatus = async (data) => {
+  const user = {
+    id: data.id,
+    fullName: data.fullName,
+    email: data.email,
+    role: data.role,
+  };
+
+  if (data.role === 'ORGANIZER') {
+    try {
+      const profileRes = await axiosInstance.get(`/users/${data.id}/organizer-profile`);
+      user.verified = profileRes.data?.verified ?? false;
+    } catch {
+      user.verified = false;
+    }
+  }
+
+  return user;
+};
+
 export const fetchCurrentUser = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
   try {
     const { data } = await axiosInstance.get('/users/me');
-    return data;
+    return await buildUserWithOrganizerStatus(data);
   } catch {
     return rejectWithValue('Session expired');
   }
@@ -20,7 +40,11 @@ export const loginUser = createAsyncThunk('auth/login', async (credentials, { re
     const { data } = await axiosInstance.post('/auth/login', credentials);
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
-    return data;
+    return {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      user: await buildUserWithOrganizerStatus(data),
+    };
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Login failed');
   }
@@ -48,7 +72,11 @@ export const verifyOtp = createAsyncThunk('auth/verifyOtp', async ({ identifier,
     const { data } = await axiosInstance.post('/auth/verify-otp', { identifier, otp });
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
-    return data;
+    return {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      user: await buildUserWithOrganizerStatus(data),
+    };
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Invalid OTP');
   }
@@ -103,12 +131,7 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.accessToken;
-        state.user = {
-          id: action.payload.id,
-          fullName: action.payload.fullName,
-          email: action.payload.email,
-          role: action.payload.role,
-        };
+        state.user = action.payload.user;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -136,12 +159,7 @@ const authSlice = createSlice({
       .addCase(verifyOtp.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.accessToken;
-        state.user = {
-          id: action.payload.id,
-          fullName: action.payload.fullName,
-          email: action.payload.email,
-          role: action.payload.role,
-        };
+        state.user = action.payload.user;
       })
       .addCase(verifyOtp.rejected, (state, action) => {
         state.loading = false;

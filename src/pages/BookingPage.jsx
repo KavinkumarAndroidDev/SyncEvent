@@ -145,8 +145,38 @@ export default function BookingPage() {
         setParticipantsInfo(flatList);
     }, [cart, tickets]);
 
+    // Validate that all cart tickets still have an active sale period.
+    // Removes expired tickets from cart and returns false if anything was invalid.
+    function validateCartSalePeriods() {
+        const now = new Date();
+        const expiredNames = [];
+        const updatedCart = { ...cart };
+
+        Object.entries(cart).forEach(([ticketId, qty]) => {
+            const ticket = tickets.find(t => t.id === Number(ticketId));
+            if (!ticket) return;
+            const saleEnd = ticket.saleEndTime ? new Date(ticket.saleEndTime) : null;
+            const saleStart = ticket.saleStartTime ? new Date(ticket.saleStartTime) : null;
+            if ((saleEnd && now > saleEnd) || (saleStart && now < saleStart)) {
+                expiredNames.push(ticket.name);
+                delete updatedCart[ticketId];
+            }
+        });
+
+        if (expiredNames.length > 0) {
+            setCart(updatedCart);
+            setPreviewError(
+                `The sale period has ended for: ${expiredNames.join(', ')}. These tickets have been removed from your cart. Please review your selection.`
+            );
+            setStep('tickets'); // Send back to ticket selection
+            return false;
+        }
+        return true;
+    }
+
     async function handleProceed() {
         if (totalTickets() === 0) return;
+        if (!validateCartSalePeriods()) return; // Block if any ticket sale expired
         setStep('participants');
     }
 
@@ -218,12 +248,21 @@ export default function BookingPage() {
                         razorpaySignature: response.razorpay_signature,
                     });
                     setSuccessBookingId(bookingId);
-                } catch {
-                    await markFailed(bookingId, orderId);
-                    setFailureReason('Payment verification failed. Please retry.');
+                } catch (verifyErr) {
+                    const msg = (verifyErr.response?.data?.message || '').toLowerCase();
+                    // Case: Booking was auto-expired by backend (10 min PENDING timeout)
+                    if (msg.includes('expired') || msg.includes('invalid') || msg.includes('not found')) {
+                        setFailureReason(
+                            'Your booking session expired because it took too long. Please start the booking process again from the event page.'
+                        );
+                    } else {
+                        await markFailed(bookingId, orderId);
+                        setFailureReason('Payment verification failed. Please retry.');
+                    }
                 }
                 setBookingLoading(false);
             },
+
             prefill: { email: user?.email || '' },
             modal: {
                 ondismiss: async function () {
@@ -246,6 +285,13 @@ export default function BookingPage() {
 
     async function handlePayNow() {
         setBookingLoading(true);
+
+        // Pre-validate sale periods before hitting the API
+        if (!validateCartSalePeriods()) {
+            setBookingLoading(false);
+            return;
+        }
+
         try {
             let bookingId = currentBookingId;
             let razorpayOrderId;
@@ -295,7 +341,71 @@ export default function BookingPage() {
             // 3. Open Razorpay
             openRazorpay(bookingId, razorpayOrderId, amount);
         } catch (err) {
-            setPreviewError(err.response?.data?.message || 'Failed to complete booking processing.');
+            const serverMsg = (err.response?.data?.message || err.message || '');
+
+            // "You already have an active booking for this event" from POST /bookings
+            // Two sub-cases: PENDING booking (can resume) or CONFIRMED booking (already registered)
+            if (serverMsg.toLowerCase().includes('active booking')) {
+                try {
+                    const activeRes = await axiosInstance.get(`/bookings/event/${id}/active`);
+                    const existingBooking = activeRes.data;
+
+                    if (existingBooking?.id) {
+                        // Sub-case 1: PENDING booking exists → switch to resume mode
+                        setIsResuming(true);
+                        setCurrentBookingId(existingBooking.id);
+                        const newCart = {};
+                        existingBooking.items?.forEach(item => {
+                            newCart[item.ticketId] = item.quantity;
+                        });
+                        setCart(newCart);
+                        const prevRes = await axiosInstance.post('/bookings/preview', {
+                            eventId: Number(id),
+                            items: existingBooking.items?.map(i => ({ ticketId: i.ticketId, qty: i.quantity })) || [],
+                            offerCode: null,
+                        });
+                        setPreview(prevRes.data);
+                        setPreviewError(
+                            'You have an unfinished booking in progress. Your previous selection has been restored — click Pay Now to continue.'
+                        );
+                    } else {
+                        // Sub-case 2: No PENDING booking → user already has a CONFIRMED registration
+                        setPreviewError(
+                            'You already have a confirmed registration for this event. You can view it in your dashboard under My Registrations.'
+                        );
+                    }
+                } catch {
+                    setPreviewError('You already have a booking for this event. Please check your dashboard.');
+                }
+                setBookingLoading(false);
+                return;
+            }
+
+            // "Ticket sale has ended: X" — sale ended between our validation and the API call
+            // Remove the expired ticket from cart and send user back to ticket selection
+            if (serverMsg.toLowerCase().includes('ticket sale has ended') || serverMsg.toLowerCase().includes('sale has ended')) {
+                // Extract ticket name from message e.g. "Ticket sale has ended: Day Pass"
+                const ticketName = serverMsg.includes(':') ? serverMsg.split(':').slice(1).join(':').trim() : '';
+                // Remove sold-out/expired ticket from cart
+                const expiredTicket = tickets.find(t => ticketName && t.name === ticketName);
+                if (expiredTicket) {
+                    setCart(prev => {
+                        const updated = { ...prev };
+                        delete updated[expiredTicket.id];
+                        return updated;
+                    });
+                }
+                setStep('tickets');
+                setPreviewError(
+                    ticketName
+                        ? `The sale period for "${ticketName}" has ended. It has been removed from your cart.`
+                        : 'One or more ticket sale periods have ended. Please review your selection.'
+                );
+                setBookingLoading(false);
+                return;
+            }
+
+            setPreviewError(serverMsg || 'Failed to complete booking. Please try again.');
             setBookingLoading(false);
         }
     }
@@ -511,4 +621,4 @@ export default function BookingPage() {
             />
         </main>
     );
-}
+}

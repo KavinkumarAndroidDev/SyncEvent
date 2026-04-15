@@ -16,6 +16,13 @@ export default function Navbar() {
     navigate('/');
   };
 
+  const getDashboardLink = () => {
+    if (!user) return '/dashboard';
+    if (user.role === 'ADMIN') return '/admin';
+    if (user.role === 'ORGANIZER') return '/organizer';
+    return '/dashboard';
+  };
+
   return (
     <>
       <header className="navbar-root">
@@ -34,7 +41,7 @@ export default function Navbar() {
           <div className="navbar-actions">
             {user ? (
               <>
-                <Link to={user.role === 'ATTENDEE' ? '/dashboard' : '/'} className="nav-link">Dashboard</Link>
+                <Link to={getDashboardLink()} className="nav-link">Dashboard</Link>
                 <span className="user-greet">Hi, {user.fullName?.split(' ')[0]}</span>
                 <button className="btn-outline-sm" onClick={() => setShowModal(true)}>Logout</button>
               </>

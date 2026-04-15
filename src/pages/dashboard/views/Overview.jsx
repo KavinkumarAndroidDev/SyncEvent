@@ -28,11 +28,14 @@ export default function Overview() {
   }, []);
 
   const upcomingEvents = useMemo(() => {
-    const now = new Date();
+    // Use eventStartTime (event's actual start date) not createdAt (booking date)
+    // Compare against start of today so events today + future are included
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return bookings
-      .filter(b => b.status === 'CONFIRMED' && new Date(b.eventDate) >= now)
-      .sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate))
-      .slice(0, 10); // Show up to 10
+      .filter(b => b.status === 'CONFIRMED' && b.eventStartTime && new Date(b.eventStartTime) >= today)
+      .sort((a, b) => new Date(a.eventStartTime) - new Date(b.eventStartTime))
+      .slice(0, 10);
   }, [bookings]);
 
   if (loading) return <div className="p-4">Loading dashboard...</div>;
@@ -63,12 +66,21 @@ export default function Overview() {
               </div>
             ) : (
               <ul className="overview-list">
-                {upcomingEvents.map(b => (
+                {upcomingEvents.map(b => {
+                  const eventDate = new Date(b.eventStartTime);
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+                  const evDay = new Date(eventDate); evDay.setHours(0,0,0,0);
+                  const dayLabel = evDay.getTime() === today.getTime() ? 'Today' :
+                                   evDay.getTime() === tomorrow.getTime() ? 'Tomorrow' :
+                                   eventDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                  const timeLabel = eventDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                  return (
                   <li key={b.id} className="list-item" style={{ padding: '20px 0' }}>
                     <div className="item-main">
                       <p className="item-title" style={{ fontSize: '16px', marginBottom: '4px' }}>{b.eventTitle}</p>
                       <p className="item-sub" style={{ fontSize: '13px' }}>
-                        {new Date(b.eventDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                        {dayLabel} at {timeLabel}
                       </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -78,7 +90,8 @@ export default function Overview() {
                         </Link>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -102,7 +115,7 @@ export default function Overview() {
                 {payments.slice(0, 10).map(p => (
                   <li key={p.id} className="list-item" style={{ padding: '20px 0' }}>
                     <div className="item-main">
-                      <p className="item-title" style={{ fontSize: '15px', marginBottom: '4px' }}>Transaction REF-{p.id}</p>
+                      <p className="item-title" style={{ fontSize: '15px', marginBottom: '4px' }}>Payment · {new Date(p.createdAt).toLocaleDateString()}</p>
                       <p className="item-sub" style={{ fontSize: '13px' }}>
                         {new Date(p.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} via {p.paymentMode || 'Gateway'}
                       </p>

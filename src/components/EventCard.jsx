@@ -25,16 +25,19 @@ export default function EventCard({ event }) {
   const thumbnail = `https://placehold.co/600x340/${bg.replace('#','')}/${fg.replace('#','')}?text=${encodeURIComponent(event.title || 'Event')}`;
   const priceLabel = event.startingPrice == null ? '' : event.startingPrice === 0 ? 'Free' : `₹${event.startingPrice} onwards`;
 
+  // Truncate title to max 2 lines
+  const title = event.title || '';
+
   return (
     <Link to={`/events/${event.id}`} className="event-card-link">
       <div className="event-card">
         <div className="event-card-img-wrap">
-          <img src={thumbnail} alt={event.title} className="event-card-img" />
+          <img src={thumbnail} alt={title} className="event-card-img" />
           {priceLabel && <span className="event-card-badge">{priceLabel}</span>}
         </div>
         <div className="event-card-body">
           <p className="event-card-date">{dateStr}{timeStr && ` · ${timeStr}`}</p>
-          <h3 className="event-card-title">{event.title}</h3>
+          <h3 className="event-card-title">{title}</h3>
           <p className="event-card-location">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
               <path d="M8 14s5-3.8 5-8A5 5 0 0 0 3 6c0 4.2 5 8 5 8z" stroke="currentColor" strokeWidth="1.4"/>

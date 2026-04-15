@@ -3,21 +3,23 @@ import axiosInstance from '../../../api/axiosInstance';
 import Modal from '../../../components/Modal';
 import Button from '../../../components/Button';
 
+const PAGE_SIZE = 10;
+
 export default function MyRegistrations() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBooking, setSelectedBooking] = useState(null); 
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('newest');
   const [confirmCancel, setConfirmCancel] = useState(null);
   const [eventForCancel, setEventForCancel] = useState(null);
   const [checkingDeadline, setCheckingDeadline] = useState(false);
+  const [page, setPage] = useState(0);
 
   const fetchBookings = async () => {
     try {
-      // Increase size to avoid partial data showing for active users
-      const res = await axiosInstance.get('/bookings?size=100');
+      const res = await axiosInstance.get('/bookings?size=200');
       setBookings(res.data.content || []);
     } catch (err) {
       console.error(err);
@@ -45,7 +47,7 @@ export default function MyRegistrations() {
   const canCancel = useMemo(() => {
     if (!eventForCancel || eventForCancel.error) return false;
     if (!eventForCancel.isCancellable) return false;
-    if (!eventForCancel.cancellationDeadline) return true; // Cancellable and no deadline specified
+    if (!eventForCancel.cancellationDeadline) return true;
     return new Date() < new Date(eventForCancel.cancellationDeadline);
   }, [eventForCancel]);
 
@@ -70,7 +72,7 @@ export default function MyRegistrations() {
 
   const filteredBookings = useMemo(() => {
     let result = bookings.filter(b => {
-      const matchesSearch = b.eventTitle.toLowerCase().includes(search.toLowerCase()) || 
+      const matchesSearch = b.eventTitle.toLowerCase().includes(search.toLowerCase()) ||
                             `REF-${b.id}`.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -82,6 +84,9 @@ export default function MyRegistrations() {
     return result;
   }, [bookings, search, statusFilter, sortBy]);
 
+  const totalPages = Math.ceil(filteredBookings.length / PAGE_SIZE);
+  const pagedBookings = filteredBookings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   if (loading) return <div className="p-4">Loading registrations...</div>;
 
   return (
@@ -92,30 +97,30 @@ export default function MyRegistrations() {
 
       {/* Filter Bar */}
       <div className="dashboard-filter-bar" style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <input 
-          type="text" 
-          placeholder="Search by event title or Reference..." 
-          className="form-input" 
+        <input
+          type="text"
+          placeholder="Search by event title or Reference..."
+          className="form-input"
           style={{ flex: 1, minWidth: '200px' }}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
         />
-        <select 
-          className="form-input" 
+        <select
+          className="form-input"
           style={{ width: '150px' }}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
         >
           <option value="ALL">All Status</option>
           <option value="CONFIRMED">Confirmed</option>
           <option value="PENDING">Pending</option>
           <option value="CANCELLED">Cancelled</option>
         </select>
-        <select 
-          className="form-input" 
+        <select
+          className="form-input"
           style={{ width: '150px' }}
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
+          onChange={(e) => { setSortBy(e.target.value); setPage(0); }}
         >
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
@@ -132,7 +137,7 @@ export default function MyRegistrations() {
             <table className="dashboard-table">
               <thead>
                 <tr>
-                  <th>Reference</th>
+                  <th>#</th>
                   <th>Event</th>
                   <th>Date</th>
                   <th>Status</th>
@@ -140,9 +145,9 @@ export default function MyRegistrations() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBookings.map(b => (
+                {pagedBookings.map((b, idx) => (
                   <tr key={b.id}>
-                    <td style={{ fontWeight: 600 }}>REF-{b.id}</td>
+                    <td style={{ color: 'var(--neutral-400)', width: 40 }}>{page * PAGE_SIZE + idx + 1}</td>
                     <td>{b.eventTitle}</td>
                     <td>{new Date(b.createdAt).toLocaleDateString()}</td>
                     <td>
@@ -164,11 +169,26 @@ export default function MyRegistrations() {
         )}
       </div>
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="pagination" style={{ marginTop: '24px' }}>
+          <button className="page-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              className={`page-btn ${page === i ? 'page-btn-active' : ''}`}
+              onClick={() => setPage(i)}
+            >{i + 1}</button>
+          ))}
+          <button className="page-btn" disabled={page === totalPages - 1} onClick={() => setPage(p => p + 1)}>Next →</button>
+        </div>
+      )}
+
       {/* Pass Modal */}
       {selectedBooking && (
-        <Modal 
-          isOpen={!!selectedBooking} 
-          title="Event Pass" 
+        <Modal
+          isOpen={!!selectedBooking}
+          title="Event Pass"
           onClose={() => setSelectedBooking(null)}
           actions={<Button onClick={() => window.print()}>Print Pass</Button>}
         >
@@ -197,9 +217,9 @@ export default function MyRegistrations() {
 
       {/* Cancel Modal */}
       {confirmCancel && (
-        <Modal 
-          isOpen={!!confirmCancel} 
-          title="Confirm Cancellation" 
+        <Modal
+          isOpen={!!confirmCancel}
+          title="Confirm Cancellation"
           onClose={() => setConfirmCancel(null)}
           actions={
             checkingDeadline ? (
@@ -210,24 +230,24 @@ export default function MyRegistrations() {
                 <Button variant="danger" onClick={() => handleCancel(confirmCancel.id)}>Yes, Cancel Booking</Button>
               </>
             ) : (
-                <Button onClick={() => setConfirmCancel(null)}>Back</Button>
+              <Button onClick={() => setConfirmCancel(null)}>Back</Button>
             )
           }
         >
           {checkingDeadline ? (
             <p>Verifying cancellation deadline...</p>
           ) : eventForCancel?.error ? (
-              <p>Could not verify cancellation policy. Please try again later.</p>
+            <p>Could not verify cancellation policy. Please try again later.</p>
           ) : canCancel ? (
             <p>Are you sure you want to cancel your registration for <strong>{confirmCancel.eventTitle}</strong>? This action cannot be undone.</p>
           ) : (
             <div>
-                <p style={{ color: '#dc2626', fontWeight: 600 }}>CANCELLATION NOT POSSIBLE</p>
-                {!eventForCancel?.isCancellable ? (
-                    <p>This event is non-cancellable according to the organizer's policy.</p>
-                ) : (
-                    <p>The cancellation deadline for this event (<strong>{new Date(eventForCancel?.cancellationDeadline).toLocaleString()}</strong>) has already passed.</p>
-                )}
+              <p style={{ color: '#dc2626', fontWeight: 600 }}>CANCELLATION NOT POSSIBLE</p>
+              {!eventForCancel?.isCancellable ? (
+                <p>This event is non-cancellable according to the organizer&apos;s policy.</p>
+              ) : (
+                <p>The cancellation deadline for this event (<strong>{new Date(eventForCancel?.cancellationDeadline).toLocaleString()}</strong>) has already passed.</p>
+              )}
             </div>
           )}
         </Modal>

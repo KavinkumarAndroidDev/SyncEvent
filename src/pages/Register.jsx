@@ -126,6 +126,9 @@ export default function Register() {
         <p className="auth-switch">
           Already have an account? <Link to="/login">Login</Link>
         </p>
+        <p className="auth-switch" style={{ marginTop: 4 }}>
+          Want to host events? <Link to="/register/organizer">Register as Organizer</Link>
+        </p>
       </div>
     </div>
   );
