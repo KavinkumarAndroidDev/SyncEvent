@@ -1,9 +1,9 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axiosInstance from '../../api/axiosInstance';
+import { clearAuthTokens, getAccessToken, setAuthTokens } from '../../api/authStorage';
 
 const getValidToken = () => {
-  const token = localStorage.getItem('accessToken');
-  return token;
+  return getAccessToken();
 };
 
 const buildUserWithOrganizerStatus = async (data) => {
@@ -38,8 +38,7 @@ export const fetchCurrentUser = createAsyncThunk('auth/fetchMe', async (_, { rej
 export const loginUser = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   try {
     const { data } = await axiosInstance.post('/auth/login', credentials);
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('refreshToken', data.refreshToken);
+    setAuthTokens(data.accessToken, data.refreshToken);
     return {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
@@ -70,8 +69,7 @@ export const sendOtp = createAsyncThunk('auth/sendOtp', async (identifier, { rej
 export const verifyOtp = createAsyncThunk('auth/verifyOtp', async ({ identifier, otp }, { rejectWithValue }) => {
   try {
     const { data } = await axiosInstance.post('/auth/verify-otp', { identifier, otp });
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('refreshToken', data.refreshToken);
+    setAuthTokens(data.accessToken, data.refreshToken);
     return {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
@@ -85,8 +83,7 @@ export const verifyOtp = createAsyncThunk('auth/verifyOtp', async ({ identifier,
 export const logoutUser = createAsyncThunk('auth/logoutUser', async (_, { rejectWithValue }) => {
   try {
     await axiosInstance.post('/auth/logout');
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+    clearAuthTokens();
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Logout failed');
   }
@@ -103,6 +100,7 @@ const authSlice = createSlice({
     otpSent: false,
     error: null,
     registerSuccess: false,
+    initialized: !validToken,
   },
   reducers: {
     clearError(state) {
@@ -120,18 +118,20 @@ const authSlice = createSlice({
     builder
       .addCase(fetchCurrentUser.fulfilled, (state, action) => {
         state.user = action.payload;
+        state.initialized = true;
       })
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.user = null;
         state.token = null;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        state.initialized = true;
+        clearAuthTokens();
       })
       .addCase(loginUser.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.accessToken;
         state.user = action.payload.user;
+        state.initialized = true;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -160,6 +160,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.token = action.payload.accessToken;
         state.user = action.payload.user;
+        state.initialized = true;
       })
       .addCase(verifyOtp.rejected, (state, action) => {
         state.loading = false;
@@ -169,13 +170,14 @@ const authSlice = createSlice({
         state.user = null;
         state.token = null;
         state.otpSent = false;
+        state.initialized = true;
       })
       .addCase(logoutUser.rejected, (state) => {
         state.user = null;
         state.token = null;
         state.otpSent = false;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        state.initialized = true;
+        clearAuthTokens();
       });
   },
 });

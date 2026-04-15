@@ -77,18 +77,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="dash-layout">
-      {/* Sidebar */}
       <aside className="dash-sidebar">
-        {/* <div className="dash-sidebar-header">
-          <div className="dash-brand">
-            <div className="dash-brand-icon">A</div>
-            <div>
-              <div className="dash-brand-name">SyncEvent</div>
-              <div className="dash-brand-role">Admin Panel</div>
-            </div>
-          </div>
-        </div> */}
-
         <div className="dash-user-row">
           <div className="dash-user-avatar">{user?.fullName?.charAt(0)?.toUpperCase() || 'A'}</div>
           <div className="dash-user-info">
@@ -120,12 +109,14 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="dash-main">
         <Outlet />
       </main>
 
-      <Modal isOpen={showModal} title="Confirm Logout" onClose={() => setShowModal(false)}
+      <Modal
+        isOpen={showModal}
+        title="Confirm Logout"
+        onClose={() => setShowModal(false)}
         actions={
           <>
             <button className="btn-table" onClick={() => setShowModal(false)}>Cancel</button>

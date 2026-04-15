@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+BACKEND_CODE_COPY/
 
 # Editor directories and files
 .vscode/*

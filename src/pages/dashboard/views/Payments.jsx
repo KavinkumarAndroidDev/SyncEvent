@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import axiosInstance from '../../../api/axiosInstance';
 import Modal from '../../../components/Modal';
 import Button from '../../../components/Button';
@@ -30,19 +30,19 @@ export default function Payments() {
   }, []);
 
   const filteredPayments = useMemo(() => {
-    let result = payments.filter(p => {
-      const refId = `REF-${p.id}`.toLowerCase();
-      const gatewayId = (p.razorpayPaymentId?.toLowerCase() || '');
+    const result = payments.filter((payment) => {
+      const refId = `REF-${payment.id}`.toLowerCase();
+      const gatewayId = payment.razorpayPaymentId?.toLowerCase() || '';
       const searchTerm = search.toLowerCase();
       const matchesSearch = refId.includes(searchTerm) || gatewayId.includes(searchTerm);
-      const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
+      const matchesStatus = statusFilter === 'ALL' || payment.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
 
     if (sortBy === 'newest') result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (sortBy === 'oldest') result.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    if (sortBy === 'amount-high') result.sort((a, b) => b.amount - a.amount);
-    if (sortBy === 'amount-low') result.sort((a, b) => a.amount - b.amount);
+    if (sortBy === 'amount-high') result.sort((a, b) => Number(b.amount) - Number(a.amount));
+    if (sortBy === 'amount-low') result.sort((a, b) => Number(a.amount) - Number(b.amount));
 
     return result;
   }, [payments, search, statusFilter, sortBy]);
@@ -56,24 +56,29 @@ export default function Payments() {
     <div className="view-container">
       <header className="view-header">
         <h2 className="view-title">Transaction History</h2>
-        <p style={{ color: 'var(--neutral-400)', fontSize: '14px' }}>Keep track of your event bookings and payments.</p>
+        <p style={{ color: 'var(--neutral-400)', fontSize: 14 }}>Keep track of your event bookings and payments.</p>
       </header>
 
-      {/* Filter Bar */}
-      <div className="dashboard-filter-bar" style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+      <div className="dashboard-filter-bar" style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         <input
           type="text"
-          placeholder="Search by Reference or Payment ID..."
+          placeholder="Search by reference or payment ID..."
           className="form-input"
-          style={{ flex: 1, minWidth: '240px' }}
+          style={{ flex: 1, minWidth: 240 }}
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
         />
         <select
           className="form-input"
-          style={{ width: '150px' }}
+          style={{ width: 150 }}
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(0);
+          }}
         >
           <option value="ALL">All Status</option>
           <option value="COMPLETED">Completed</option>
@@ -82,9 +87,12 @@ export default function Payments() {
         </select>
         <select
           className="form-input"
-          style={{ width: '150px' }}
+          style={{ width: 150 }}
           value={sortBy}
-          onChange={(e) => { setSortBy(e.target.value); setPage(0); }}
+          onChange={(e) => {
+            setSortBy(e.target.value);
+            setPage(0);
+          }}
         >
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
@@ -106,23 +114,23 @@ export default function Payments() {
             </tr>
           </thead>
           <tbody>
-              {pagedPayments.map((p, idx) => (
-              <tr key={p.id}>
-                <td style={{ color: 'var(--neutral-400)', width: 40 }}>{page * PAGE_SIZE + idx + 1}</td>
-                <td>{new Date(p.createdAt).toLocaleDateString()}</td>
-                <td style={{ fontWeight: 700 }}>₹{p.amount}</td>
-                <td>{p.paymentMode || 'Razorpay'}</td>
+            {pagedPayments.map((payment, index) => (
+              <tr key={payment.id}>
+                <td style={{ color: 'var(--neutral-400)', width: 40 }}>{page * PAGE_SIZE + index + 1}</td>
+                <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
+                <td style={{ fontWeight: 700 }}>Rs. {payment.amount}</td>
+                <td>{payment.paymentMode || 'Razorpay'}</td>
                 <td>
-                  <span className={`badge badge-${p.status?.toLowerCase()}`}>{p.status}</span>
+                  <span className={`badge badge-${payment.status?.toLowerCase()}`}>{payment.status}</span>
                 </td>
                 <td>
-                  <Button variant="table" onClick={() => setSelectedInvoice(p)}>View Invoice</Button>
+                  <Button variant="table" onClick={() => setSelectedInvoice(payment)}>View Invoice</Button>
                 </td>
               </tr>
             ))}
             {pagedPayments.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: '48px', color: 'var(--neutral-400)' }}>
+                <td colSpan="6" style={{ textAlign: 'center', padding: 48, color: 'var(--neutral-400)' }}>
                   {payments.length === 0 ? 'No transactions found.' : 'No transactions match your search criteria.'}
                 </td>
               </tr>
@@ -131,29 +139,29 @@ export default function Payments() {
         </table>
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="pagination" style={{ marginTop: '24px' }}>
-          <button className="page-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
-          {Array.from({ length: totalPages }, (_, i) => (
+        <div className="pagination" style={{ marginTop: 24 }}>
+          <button className="page-btn" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>Prev</button>
+          {Array.from({ length: totalPages }, (_, index) => (
             <button
-              key={i}
-              className={`page-btn ${page === i ? 'page-btn-active' : ''}`}
-              onClick={() => setPage(i)}
-            >{i + 1}</button>
+              key={index}
+              className={`page-btn ${page === index ? 'page-btn-active' : ''}`}
+              onClick={() => setPage(index)}
+            >
+              {index + 1}
+            </button>
           ))}
-          <button className="page-btn" disabled={page === totalPages - 1} onClick={() => setPage(p => p + 1)}>Next →</button>
+          <button className="page-btn" disabled={page === totalPages - 1} onClick={() => setPage((value) => value + 1)}>Next</button>
         </div>
       )}
 
-      {/* Invoice Modal */}
       {selectedInvoice && (
         <Modal
           isOpen={!!selectedInvoice}
           title="Payment Invoice"
           onClose={() => setSelectedInvoice(null)}
           actions={
-            <div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 12, width: '100%', justifyContent: 'flex-end' }}>
               <Button variant="secondary" onClick={() => setSelectedInvoice(null)}>Close</Button>
               <Button onClick={() => window.print()}>Print / Download</Button>
             </div>
@@ -162,8 +170,8 @@ export default function Payments() {
           <div className="invoice-receipt">
             <div className="receipt-header">
               <div>
-                <h4 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--neutral-900)' }}>SyncEvent</h4>
-                <p style={{ margin: 0, fontSize: '12px', color: 'var(--neutral-400)' }}>Official Receipt</p>
+                <h4 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--neutral-900)' }}>SyncEvent</h4>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--neutral-400)' }}>Official Receipt</p>
               </div>
               <div className={`receipt-status-badge status-${selectedInvoice.status?.toLowerCase()}`}>
                 {selectedInvoice.status}
@@ -197,19 +205,19 @@ export default function Payments() {
                 <span>Amount</span>
               </div>
               <div className="receipt-item-row">
-                <span>Event Registration Fee (Booking #{selectedInvoice.bookingId})</span>
-                <span style={{ fontWeight: 600 }}>₹{selectedInvoice.amount}</span>
+                <span>Event Registration Fee (Booking #{selectedInvoice.registrationId})</span>
+                <span style={{ fontWeight: 600 }}>Rs. {selectedInvoice.amount}</span>
               </div>
 
               <div className="receipt-total">
                 <span className="total-label">
                   {selectedInvoice.status === 'FAILED' ? 'Payable Amount' : 'Total Amount Paid'}
                 </span>
-                <span className="total-value">₹{selectedInvoice.amount}</span>
+                <span className="total-value">Rs. {selectedInvoice.amount}</span>
               </div>
 
               {selectedInvoice.status === 'FAILED' && (
-                <p style={{ marginTop: '16px', fontSize: '12px', color: '#dc2626', textAlign: 'right', fontWeight: 600 }}>
+                <p style={{ marginTop: 16, fontSize: 12, color: '#dc2626', textAlign: 'right', fontWeight: 600 }}>
                   The transaction could not be processed. If funds were deducted, they will be reversed according to bank policy.
                 </p>
               )}

@@ -13,6 +13,8 @@ import PaymentFailureModal from '../components/booking/PaymentFailureModal';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 
+const MAX_TICKETS_PER_BOOKING = 10;
+
 export default function BookingPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -21,9 +23,9 @@ export default function BookingPage() {
 
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [step, setStep] = useState('tickets'); // 'tickets' | 'participants' | 'payment'
+    const [step, setStep] = useState('tickets');
     const [cart, setCart] = useState({});
-    const [participantsInfo, setParticipantsInfo] = useState([]); // List of { ticketId, name, email, phone, gender }
+    const [participantsInfo, setParticipantsInfo] = useState([]);
     const [discountCode, setDiscountCode] = useState('');
     const [preview, setPreview] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -33,8 +35,20 @@ export default function BookingPage() {
     const [failureReason, setFailureReason] = useState('');
     const [currentBookingId, setCurrentBookingId] = useState(null);
     const [tickets, setTickets] = useState([]);
-    const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+    const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const [isResuming, setIsResuming] = useState(false);
+
+    function buildCartFromItems(items = []) {
+        return items.reduce((acc, item) => {
+            acc[item.ticketId] = item.quantity;
+            return acc;
+        }, {});
+    }
+
+    function resetMessageState() {
+        setPreviewError('');
+        setFailureReason('');
+    }
 
     useEffect(() => {
         const resumeId = location.state?.resumeBookingId;
@@ -45,34 +59,24 @@ export default function BookingPage() {
                     axiosInstance.get(`/events/${id}`),
                     axiosInstance.get(`/events/${id}/tickets`)
                 ]);
+
                 setEvent(evtRes.data);
                 setTickets(tktRes.data);
 
                 if (resumeId) {
                     setIsResuming(true);
                     setCurrentBookingId(resumeId);
-                    
-                    // 1. Fetch Booking Details
-                    const bookRes = await axiosInstance.get(`/bookings/${resumeId}`);
-                    const bData = bookRes.data;
-                    
-                    // 2. Reconstruct Cart
-                    const newCart = {};
-                    bData.items.forEach(item => {
-                        newCart[item.ticketId] = item.quantity;
-                    });
-                    setCart(newCart);
 
-                    // 3. Reconstruct Participants (if available)
-                    // Note: If we don't have a participants endpoint for booking, we assume they are already saved
-                    // or we might need to fetch them if the backend allows.
-                    // For now, let's just get the preview and jump to payment.
-                    
+                    const bookRes = await axiosInstance.get(`/bookings/${resumeId}`);
+                    const booking = bookRes.data;
+                    setCart(buildCartFromItems(booking.items));
+
                     const prevRes = await axiosInstance.post('/bookings/preview', {
                         eventId: Number(id),
-                        items: bData.items.map(i => ({ ticketId: i.ticketId, qty: i.quantity })),
-                        offerCode: bData.offerCode || null,
+                        items: booking.items.map((item) => ({ ticketId: item.ticketId, qty: item.quantity })),
+                        offerCode: null,
                     });
+
                     setPreview(prevRes.data);
                     setStep('payment');
                 }
@@ -96,67 +100,79 @@ export default function BookingPage() {
 
     function rawTotal() {
         if (!tickets.length) return 0;
-        return tickets.reduce((sum, t) => sum + (cart[t.id] || 0) * t.price, 0);
+        return tickets.reduce((sum, ticket) => sum + (cart[ticket.id] || 0) * ticket.price, 0);
     }
 
     function changeQty(ticketId, delta) {
         setCart((prev) => {
             const currentQty = prev[ticketId] || 0;
             const overallTotal = Object.values(prev).reduce((a, b) => a + b, 0);
-            
-            if (delta > 0 && overallTotal >= 10) {
-                setModal({ 
-                    isOpen: true, 
-                    title: 'Ticket Limit Reached', 
-                    message: 'You can only book up to 10 tickets per booking.',
-                    onConfirm: null 
+
+            if (delta > 0 && overallTotal >= MAX_TICKETS_PER_BOOKING) {
+                setModal({
+                    isOpen: true,
+                    title: 'Ticket Limit Reached',
+                    message: `You can only book up to ${MAX_TICKETS_PER_BOOKING} tickets in one booking.`,
                 });
                 return prev;
             }
 
             const next = Math.max(0, currentQty + delta);
             const updated = { ...prev };
-            if (next === 0) delete updated[ticketId];
-            else updated[ticketId] = next;
+
+            if (next === 0) {
+                delete updated[ticketId];
+            } else {
+                updated[ticketId] = next;
+            }
+
             return updated;
         });
+
         setPreview(null);
+        resetMessageState();
     }
 
     function getItems() {
         return Object.entries(cart).map(([ticketId, qty]) => ({ ticketId: Number(ticketId), qty }));
     }
 
-    // Initialize/Update participants list based on cart
     useEffect(() => {
-        const flatList = [];
-        Object.entries(cart).forEach(([ticketId, qty]) => {
-            for (let i = 0; i < qty; i++) {
-                flatList.push({ 
-                    ticketId: Number(ticketId), 
-                    ticketName: tickets.find(t => t.id === Number(ticketId))?.name || 'Ticket',
-                    name: '', 
-                    email: '', 
-                    phone: '', 
-                    gender: 'OTHER' 
-                });
-            }
+        setParticipantsInfo((prev) => {
+            const next = [];
+
+            Object.entries(cart).forEach(([ticketId, qty]) => {
+                for (let i = 0; i < qty; i += 1) {
+                    const previousEntry = prev[next.length];
+                    const sameTicket = previousEntry?.ticketId === Number(ticketId);
+
+                    next.push({
+                        ticketId: Number(ticketId),
+                        ticketName: tickets.find((ticket) => ticket.id === Number(ticketId))?.name || 'Ticket',
+                        name: sameTicket ? previousEntry.name : '',
+                        email: sameTicket ? previousEntry.email : '',
+                        phone: sameTicket ? previousEntry.phone : '',
+                        gender: sameTicket ? previousEntry.gender : 'OTHER',
+                    });
+                }
+            });
+
+            return next;
         });
-        setParticipantsInfo(flatList);
     }, [cart, tickets]);
 
-    // Validate that all cart tickets still have an active sale period.
-    // Removes expired tickets from cart and returns false if anything was invalid.
     function validateCartSalePeriods() {
         const now = new Date();
         const expiredNames = [];
         const updatedCart = { ...cart };
 
-        Object.entries(cart).forEach(([ticketId, qty]) => {
-            const ticket = tickets.find(t => t.id === Number(ticketId));
+        Object.entries(cart).forEach(([ticketId]) => {
+            const ticket = tickets.find((item) => item.id === Number(ticketId));
             if (!ticket) return;
+
             const saleEnd = ticket.saleEndTime ? new Date(ticket.saleEndTime) : null;
             const saleStart = ticket.saleStartTime ? new Date(ticket.saleStartTime) : null;
+
             if ((saleEnd && now > saleEnd) || (saleStart && now < saleStart)) {
                 expiredNames.push(ticket.name);
                 delete updatedCart[ticketId];
@@ -165,30 +181,34 @@ export default function BookingPage() {
 
         if (expiredNames.length > 0) {
             setCart(updatedCart);
-            setPreviewError(
-                `The sale period has ended for: ${expiredNames.join(', ')}. These tickets have been removed from your cart. Please review your selection.`
-            );
-            setStep('tickets'); // Send back to ticket selection
+            setPreview(null);
+            setPreviewError(`The sale period is not active for: ${expiredNames.join(', ')}. Please review your selection.`);
+            setStep('tickets');
             return false;
         }
+
         return true;
     }
 
     async function handleProceed() {
         if (totalTickets() === 0) return;
-        if (!validateCartSalePeriods()) return; // Block if any ticket sale expired
+        resetMessageState();
+
+        if (!validateCartSalePeriods()) return;
         setStep('participants');
     }
 
     async function applyDiscount() {
         if (!discountCode.trim()) return;
+
         setPreviewLoading(true);
         setPreviewError('');
+
         try {
             const res = await axiosInstance.post('/bookings/preview', {
                 eventId: Number(id),
                 items: getItems(),
-                offerCode: discountCode,
+                offerCode: discountCode.trim(),
             });
             setPreview(res.data);
         } catch (err) {
@@ -199,47 +219,72 @@ export default function BookingPage() {
     }
 
     async function handleProceedToPayment() {
-        // Simple validation
-        const incomplete = participantsInfo.some(p => !p.name || !p.email || !p.phone);
+        resetMessageState();
+
+        const incomplete = participantsInfo.some((participant) => !participant.name || !participant.email || !participant.phone);
         if (incomplete) {
             setPreviewError('Please fill in all participant details.');
             return;
         }
 
-        // Check for unique emails
-        const emails = participantsInfo.map(p => p.email.toLowerCase().trim());
-        const hasDuplicates = new Set(emails).size !== emails.length;
-        if (hasDuplicates) {
+        const hasInvalidEmail = participantsInfo.some((participant) => !/\S+@\S+\.\S+/.test(participant.email.trim()));
+        if (hasInvalidEmail) {
+            setPreviewError('Please enter valid email addresses for all participants.');
+            return;
+        }
+
+        const hasInvalidPhone = participantsInfo.some((participant) => !/^\d{10}$/.test(participant.phone.replace(/\D/g, '')));
+        if (hasInvalidPhone) {
+            setPreviewError('Please enter valid 10-digit phone numbers for all participants.');
+            return;
+        }
+
+        const emails = participantsInfo.map((participant) => participant.email.toLowerCase().trim());
+        if (new Set(emails).size !== emails.length) {
             setPreviewError('Each participant must have a unique email address.');
             return;
         }
 
         setPreviewLoading(true);
-        setPreviewError('');
+
         try {
             const res = await axiosInstance.post('/bookings/preview', {
                 eventId: Number(id),
                 items: getItems(),
-                offerCode: discountCode || null,
+                offerCode: discountCode.trim() || null,
             });
             setPreview(res.data);
             setStep('payment');
         } catch (err) {
-            setPreviewError(err.response?.data?.message || 'Could not get preview. Try again.');
+            setPreviewError(err.response?.data?.message || 'Could not get booking preview. Please try again.');
         } finally {
             setPreviewLoading(false);
         }
     }
 
+    async function markFailed(bookingId, orderId) {
+        try {
+            await axiosInstance.post('/payments/fail', { bookingId, razorpayOrderId: orderId });
+        } catch {
+            // Keep the UI simple even if the fail endpoint cannot be reached.
+        }
+    }
+
     function openRazorpay(bookingId, orderId, amount) {
+        if (!window.Razorpay) {
+            setFailureReason('Payment window could not be opened. Please refresh the page and try again.');
+            setBookingLoading(false);
+            return;
+        }
+
         const options = {
             key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-            amount: Math.round(amount * 100),
+            amount: Math.round(Number(amount || 0) * 100),
             currency: 'INR',
             name: 'SyncEvent',
             description: event?.title || 'Event Booking',
             order_id: orderId,
-            handler: async function (response) {
+            handler: async (response) => {
                 try {
                     await axiosInstance.post('/payments/verify', {
                         bookingId,
@@ -247,46 +292,45 @@ export default function BookingPage() {
                         razorpayPaymentId: response.razorpay_payment_id,
                         razorpaySignature: response.razorpay_signature,
                     });
+
                     setSuccessBookingId(bookingId);
                 } catch (verifyErr) {
-                    const msg = (verifyErr.response?.data?.message || '').toLowerCase();
-                    // Case: Booking was auto-expired by backend (10 min PENDING timeout)
-                    if (msg.includes('expired') || msg.includes('invalid') || msg.includes('not found')) {
-                        setFailureReason(
-                            'Your booking session expired because it took too long. Please start the booking process again from the event page.'
-                        );
+                    const message = (verifyErr.response?.data?.message || '').toLowerCase();
+
+                    if (message.includes('expired') || message.includes('invalid') || message.includes('not found')) {
+                        setFailureReason('Your booking session expired. Please start again from the event page.');
                     } else {
                         await markFailed(bookingId, orderId);
-                        setFailureReason('Payment verification failed. Please retry.');
+                        setFailureReason('Payment verification failed. Please try again.');
                     }
                 }
+
                 setBookingLoading(false);
             },
-
             prefill: { email: user?.email || '' },
             modal: {
-                ondismiss: async function () {
+                ondismiss: async () => {
                     await markFailed(bookingId, orderId);
-                    setFailureReason('You closed the payment window.');
+                    setFailureReason('You closed the payment window before completing the payment.');
                     setBookingLoading(false);
                 },
             },
             theme: { color: '#17B978' },
         };
 
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', async function (resp) {
+        const razorpay = new window.Razorpay(options);
+        razorpay.on('payment.failed', async (response) => {
             await markFailed(bookingId, orderId);
-            setFailureReason(resp.error?.description || 'Payment failed.');
+            setFailureReason(response.error?.description || 'Payment failed.');
             setBookingLoading(false);
         });
-        rzp.open();
+        razorpay.open();
     }
 
     async function handlePayNow() {
         setBookingLoading(true);
+        setPreviewError('');
 
-        // Pre-validate sale periods before hitting the API
         if (!validateCartSalePeriods()) {
             setBookingLoading(false);
             return;
@@ -298,108 +342,98 @@ export default function BookingPage() {
             let amount = preview?.totalAmount || rawTotal();
 
             if (isResuming) {
-                // Resume existing booking
                 const retryRes = await axiosInstance.post('/payments/retry', { bookingId });
                 razorpayOrderId = retryRes.data.razorpayOrderId;
             } else {
-                // 1. Create New Booking
                 const bookRes = await axiosInstance.post('/bookings', {
                     eventId: Number(id),
                     items: getItems(),
-                    offerCode: discountCode || null,
+                    offerCode: discountCode.trim() || null,
                 });
+
                 bookingId = bookRes.data.bookingId;
                 razorpayOrderId = bookRes.data.razorpayOrderId;
                 amount = bookRes.data.amount;
                 setCurrentBookingId(bookingId);
 
-                // 2. Map registrationItemIds & Save Participants
                 const detailRes = await axiosInstance.get(`/bookings/${bookingId}`);
-                const itemsFromDb = detailRes.data.items;
-
+                const itemsFromDb = detailRes.data.items || [];
                 const finalParticipants = [];
-                let pIndex = 0;
-                itemsFromDb.forEach(item => {
-                    for(let i=0; i < item.quantity; i++) {
-                        const info = participantsInfo[pIndex];
-                        if (info) {
+                let participantIndex = 0;
+
+                itemsFromDb.forEach((item) => {
+                    for (let i = 0; i < item.quantity; i += 1) {
+                        const participant = participantsInfo[participantIndex];
+                        if (participant) {
                             finalParticipants.push({
                                 registrationItemId: item.id,
                                 eventId: Number(id),
-                                name: info.name,
-                                email: info.email,
-                                phone: info.phone,
-                                gender: info.gender
+                                name: participant.name.trim(),
+                                email: participant.email.trim(),
+                                phone: participant.phone.replace(/\D/g, ''),
+                                gender: participant.gender,
                             });
                         }
-                        pIndex++;
+                        participantIndex += 1;
                     }
                 });
+
                 await axiosInstance.post('/participants', finalParticipants);
             }
 
-            // 3. Open Razorpay
             openRazorpay(bookingId, razorpayOrderId, amount);
         } catch (err) {
-            const serverMsg = (err.response?.data?.message || err.message || '');
+            const serverMsg = err.response?.data?.message || err.message || '';
+            const lowerMessage = serverMsg.toLowerCase();
 
-            // "You already have an active booking for this event" from POST /bookings
-            // Two sub-cases: PENDING booking (can resume) or CONFIRMED booking (already registered)
-            if (serverMsg.toLowerCase().includes('active booking')) {
+            if (lowerMessage.includes('active booking')) {
                 try {
                     const activeRes = await axiosInstance.get(`/bookings/event/${id}/active`);
                     const existingBooking = activeRes.data;
 
                     if (existingBooking?.id) {
-                        // Sub-case 1: PENDING booking exists → switch to resume mode
                         setIsResuming(true);
                         setCurrentBookingId(existingBooking.id);
-                        const newCart = {};
-                        existingBooking.items?.forEach(item => {
-                            newCart[item.ticketId] = item.quantity;
-                        });
-                        setCart(newCart);
+                        setCart(buildCartFromItems(existingBooking.items));
+
                         const prevRes = await axiosInstance.post('/bookings/preview', {
                             eventId: Number(id),
-                            items: existingBooking.items?.map(i => ({ ticketId: i.ticketId, qty: i.quantity })) || [],
+                            items: existingBooking.items?.map((item) => ({ ticketId: item.ticketId, qty: item.quantity })) || [],
                             offerCode: null,
                         });
+
                         setPreview(prevRes.data);
-                        setPreviewError(
-                            'You have an unfinished booking in progress. Your previous selection has been restored — click Pay Now to continue.'
-                        );
+                        setStep('payment');
+                        setPreviewError('You already have a pending booking for this event. Click Pay Now to continue.');
                     } else {
-                        // Sub-case 2: No PENDING booking → user already has a CONFIRMED registration
-                        setPreviewError(
-                            'You already have a confirmed registration for this event. You can view it in your dashboard under My Registrations.'
-                        );
+                        setPreviewError('You already have a confirmed registration for this event.');
                     }
                 } catch {
                     setPreviewError('You already have a booking for this event. Please check your dashboard.');
                 }
+
                 setBookingLoading(false);
                 return;
             }
 
-            // "Ticket sale has ended: X" — sale ended between our validation and the API call
-            // Remove the expired ticket from cart and send user back to ticket selection
-            if (serverMsg.toLowerCase().includes('ticket sale has ended') || serverMsg.toLowerCase().includes('sale has ended')) {
-                // Extract ticket name from message e.g. "Ticket sale has ended: Day Pass"
+            if (lowerMessage.includes('ticket sale has ended') || lowerMessage.includes('sale has ended')) {
                 const ticketName = serverMsg.includes(':') ? serverMsg.split(':').slice(1).join(':').trim() : '';
-                // Remove sold-out/expired ticket from cart
-                const expiredTicket = tickets.find(t => ticketName && t.name === ticketName);
+                const expiredTicket = tickets.find((ticket) => ticketName && ticket.name === ticketName);
+
                 if (expiredTicket) {
-                    setCart(prev => {
+                    setCart((prev) => {
                         const updated = { ...prev };
                         delete updated[expiredTicket.id];
                         return updated;
                     });
                 }
+
                 setStep('tickets');
+                setPreview(null);
                 setPreviewError(
                     ticketName
                         ? `The sale period for "${ticketName}" has ended. It has been removed from your cart.`
-                        : 'One or more ticket sale periods have ended. Please review your selection.'
+                        : 'One or more selected tickets are no longer available. Please review your cart.'
                 );
                 setBookingLoading(false);
                 return;
@@ -410,16 +444,13 @@ export default function BookingPage() {
         }
     }
 
-    async function markFailed(bookingId, orderId) {
-        try {
-            await axiosInstance.post('/payments/fail', { bookingId, razorpayOrderId: orderId });
-        } catch { }
-    }
-
     async function handleRetry() {
         if (!currentBookingId) return;
+
         setFailureReason('');
+        setPreviewError('');
         setBookingLoading(true);
+
         try {
             const res = await axiosInstance.post('/payments/retry', { bookingId: currentBookingId });
             openRazorpay(currentBookingId, res.data.razorpayOrderId, preview?.totalAmount || rawTotal());
@@ -431,16 +462,20 @@ export default function BookingPage() {
 
     async function handleCancelBooking() {
         setFailureReason('');
+
         if (currentBookingId) {
             try {
                 await axiosInstance.patch(`/bookings/${currentBookingId}/status`, { status: 'CANCELLED' });
-            } catch { }
+            } catch {
+                // If backend rejects cancellation for pending bookings, still move the user out of checkout.
+            }
         }
+
         navigate(`/events/${id}`);
     }
 
     const updateParticipant = (index, field, value) => {
-        setParticipantsInfo(prev => {
+        setParticipantsInfo((prev) => {
             const next = [...prev];
             next[index] = { ...next[index], [field]: value };
             return next;
@@ -462,7 +497,7 @@ export default function BookingPage() {
                         <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginBottom: 24 }}>You need to be logged in as an attendee to book tickets.</p>
                         <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                             <button onClick={() => navigate(-1)} style={{ padding: '10px 22px', border: '1px solid var(--neutral-100)', borderRadius: 20, background: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>Go Back</button>
-                            <Link to="/login" style={{ padding: '10px 22px', background: 'var(--neutral-900)', color: 'white', borderRadius: 20, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>Login Now</Link>
+                            <Link to="/login" state={{ from: location.pathname }} style={{ padding: '10px 22px', background: 'var(--neutral-900)', color: 'white', borderRadius: 20, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>Login Now</Link>
                         </div>
                     </div>
                 </div>
@@ -484,7 +519,7 @@ export default function BookingPage() {
                         </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {tickets?.map((ticket) => (
+                        {tickets.map((ticket) => (
                             <TicketCard
                                 key={ticket.id}
                                 ticket={ticket}
@@ -510,28 +545,28 @@ export default function BookingPage() {
                         </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                        {participantsInfo.map((p, i) => (
-                            <div key={i} style={{ padding: 20, border: '1px solid var(--neutral-100)', borderRadius: 12, background: 'white' }}>
+                        {participantsInfo.map((participant, index) => (
+                            <div key={`${participant.ticketId}-${index}`} style={{ padding: 20, border: '1px solid var(--neutral-100)', borderRadius: 12, background: 'white' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                                    <h5 style={{ fontFamily: 'DM Sans', fontWeight: 600 }}>Attendee {i + 1}</h5>
-                                    <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{p.ticketName}</span>
+                                    <h5 style={{ fontFamily: 'DM Sans', fontWeight: 600 }}>Attendee {index + 1}</h5>
+                                    <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{participant.ticketName}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                     <div className="form-group">
                                         <label className="form-label">Full Name</label>
-                                        <input className="form-input" type="text" value={p.name} onChange={(e) => updateParticipant(i, 'name', e.target.value)} required />
+                                        <input className="form-input" type="text" value={participant.name} onChange={(e) => updateParticipant(index, 'name', e.target.value)} />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Email</label>
-                                        <input className="form-input" type="email" value={p.email} onChange={(e) => updateParticipant(i, 'email', e.target.value)} required />
+                                        <input className="form-input" type="email" value={participant.email} onChange={(e) => updateParticipant(index, 'email', e.target.value)} />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Phone</label>
-                                        <input className="form-input" type="text" value={p.phone} onChange={(e) => updateParticipant(i, 'phone', e.target.value)} required />
+                                        <input className="form-input" type="text" value={participant.phone} onChange={(e) => updateParticipant(index, 'phone', e.target.value)} />
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Gender</label>
-                                        <select className="form-input" value={p.gender} onChange={(e) => updateParticipant(i, 'gender', e.target.value)}>
+                                        <select className="form-input" value={participant.gender} onChange={(e) => updateParticipant(index, 'gender', e.target.value)}>
                                             <option value="MALE">Male</option>
                                             <option value="FEMALE">Female</option>
                                             <option value="OTHER">Other</option>
@@ -558,20 +593,20 @@ export default function BookingPage() {
 
                             <h5 style={{ fontFamily: 'DM Sans', fontWeight: 700, marginBottom: 14 }}>Items Summary</h5>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                {tickets?.filter((t) => cart[t.id]).map((ticket) => (
+                                {tickets.filter((ticket) => cart[ticket.id]).map((ticket) => (
                                     <div key={ticket.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', border: '1px solid var(--neutral-100)', borderRadius: 10 }}>
                                         <div>
                                             <div style={{ fontWeight: 600, fontSize: 15 }}>{ticket.name}</div>
-                                            <div style={{ fontSize: 13, color: 'var(--neutral-400)' }}>₹{ticket.price} × {cart[ticket.id]}</div>
+                                            <div style={{ fontSize: 13, color: 'var(--neutral-400)' }}>Rs. {ticket.price} x {cart[ticket.id]}</div>
                                         </div>
-                                        <div style={{ fontWeight: 700 }}>₹{ticket.price * cart[ticket.id]}</div>
+                                        <div style={{ fontWeight: 700 }}>Rs. {ticket.price * cart[ticket.id]}</div>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
                         <BookingSummaryPanel
-                            tickets={tickets || []}
+                            tickets={tickets}
                             cart={cart}
                             preview={preview}
                             discountCode={discountCode}
@@ -587,12 +622,7 @@ export default function BookingPage() {
             )}
 
             {totalTickets() > 0 && step === 'tickets' && (
-                <StickyBar
-                    total={rawTotal()}
-                    count={totalTickets()}
-                    loading={previewLoading}
-                    onProceed={handleProceed}
-                />
+                <StickyBar total={rawTotal()} count={totalTickets()} loading={previewLoading} onProceed={handleProceed} />
             )}
 
             {step === 'participants' && (
@@ -609,16 +639,18 @@ export default function BookingPage() {
                 </div>
             )}
 
-            <PaymentSuccessModal
-                bookingId={successBookingId}
-                onGoHome={() => navigate('/')}
-            />
+            <PaymentSuccessModal bookingId={successBookingId} onGoHome={() => navigate('/dashboard/registrations')} />
 
-            <PaymentFailureModal
-                reason={failureReason}
-                onRetry={handleRetry}
-                onCancel={handleCancelBooking}
-            />
+            <PaymentFailureModal reason={failureReason} onRetry={handleRetry} onCancel={handleCancelBooking} />
+
+            <Modal
+                isOpen={modal.isOpen}
+                title={modal.title}
+                onClose={() => setModal({ isOpen: false, title: '', message: '' })}
+                actions={<Button onClick={() => setModal({ isOpen: false, title: '', message: '' })}>Close</Button>}
+            >
+                {modal.message}
+            </Modal>
         </main>
     );
 }

@@ -25,6 +25,8 @@ import Payments from '../pages/dashboard/views/Payments';
 // Admin Dashboard
 import AdminDashboard from '../pages/dashboard/AdminDashboard';
 import AdminOverview from '../pages/dashboard/views/admin/AdminOverview';
+import AdminCategories from '../pages/dashboard/views/admin/AdminCategories';
+import AdminVenues from '../pages/dashboard/views/admin/AdminVenues';
 
 // Organizer Dashboard
 import OrganizerDashboard from '../pages/dashboard/OrganizerDashboard';
@@ -35,18 +37,21 @@ import DashboardPlaceholder from '../pages/dashboard/views/DashboardPlaceholder'
 
 export function AuthLoader() {
   const dispatch = useDispatch();
-  const token = useSelector((s) => s.auth.token);
+  const { token, initialized } = useSelector((s) => s.auth);
 
   useEffect(() => {
-    if (token) dispatch(fetchCurrentUser());
-  }, [dispatch, token]);
+    if (token && !initialized) {
+      dispatch(fetchCurrentUser());
+    }
+  }, [dispatch, initialized, token]);
 
   return <Outlet />;
 }
 
 export function ProtectedRoute({ allowedRoles } = {}) {
-  const { token, user } = useSelector((s) => s.auth);
+  const { token, user, initialized } = useSelector((s) => s.auth);
   if (!token) return <Navigate to="/login" replace />;
+  if (!initialized) return <div className="detail-status">Checking session...</div>;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
@@ -57,16 +62,17 @@ export function ProtectedRoute({ allowedRoles } = {}) {
 }
 
 export function GuestRoute() {
-  const { token, user } = useSelector((s) => s.auth);
-  
+  const { token, user, initialized } = useSelector((s) => s.auth);
+
   if (!token) return <Outlet />;
-  
+  if (!initialized) return <div className="detail-status">Checking session...</div>;
+
   if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
   if (user?.role === 'ORGANIZER') {
     if (user?.verified === false) return <Outlet />;
     return <Navigate to="/organizer" replace />;
   }
-  
+
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -81,16 +87,16 @@ const router = createBrowserRouter([
           { index: true, element: <Home /> },
           { path: 'events', element: <Events /> },
           { path: 'events/:id', element: <EventDetail /> },
-          { path: 'booking/:id', element: <BookingPage /> },
           { path: 'about', element: <About /> },
           { path: 'contact', element: <Contact /> },
           { path: 'register/organizer', element: <RegisterOrganizer /> },
-          
+
 
           // Attendee Dashboard
           {
             element: <ProtectedRoute allowedRoles={['ATTENDEE']} />,
             children: [
+              { path: 'booking/:id', element: <BookingPage /> },
               {
                 path: 'dashboard',
                 element: <AttendeeDashboard />,
@@ -119,8 +125,8 @@ const router = createBrowserRouter([
                   { path: 'event-approvals', element: <DashboardPlaceholder title="Event Approvals" /> },
                   { path: 'events', element: <DashboardPlaceholder title="Events" /> },
                   { path: 'offers', element: <DashboardPlaceholder title="Offers" /> },
-                  { path: 'categories', element: <DashboardPlaceholder title="Categories" /> },
-                  { path: 'venues', element: <DashboardPlaceholder title="Venues" /> },
+                  { path: 'categories', element: <AdminCategories /> },
+                  { path: 'venues', element: <AdminVenues /> },
                   { path: 'tickets', element: <DashboardPlaceholder title="Tickets & Registrations" /> },
                   { path: 'payments', element: <DashboardPlaceholder title="Payments & Revenue" /> },
                   { path: 'reports', element: <DashboardPlaceholder title="Reports & Analytics" /> },

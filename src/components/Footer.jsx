@@ -7,7 +7,7 @@ export default function Footer() {
                 <div className="footer-grid">
                     <div>
                         <Link to="/" className="brand-logo">
-                            <img src="/Light logo.svg" className="brand-icon" alt="logo" />
+                            <img src="/light-logo.svg" className="brand-icon" alt="logo" />
                         </Link>
                         <p className="footer-desc">Your platform to discover, plan and book events. From concerts to workshops — all in one place.</p>
                     </div>
