@@ -63,7 +63,7 @@ export default function PastEvents() {
       alert('Thank you for your feedback!');
       setSelectedEvent(null);
       setFeedback('');
-    } catch (err) {
+    } catch {
       alert('Failed to submit feedback.');
     } finally {
       setSubmitting(false);

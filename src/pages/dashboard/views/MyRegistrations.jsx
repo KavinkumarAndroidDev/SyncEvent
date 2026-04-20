@@ -65,7 +65,7 @@ export default function MyRegistrations() {
     try {
       const res = await axiosInstance.get(`/bookings/${id}`);
       setSelectedBooking(res.data);
-    } catch (err) {
+    } catch {
       alert('Could not load pass details.');
     }
   };

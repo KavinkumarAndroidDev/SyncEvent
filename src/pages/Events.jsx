@@ -13,38 +13,29 @@ export default function Events() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { list, totalPages, loading, error } = useSelector((s) => s.events);
   const { categories, venues } = useSelector((s) => s.metadata);
+  const queryCategoryId = searchParams.get('categoryId') || '';
 
-  // States
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState(searchParams.get('q') || '');
   const [filters, setFilters] = useState({
-    categoryId: searchParams.get('categoryId') || '',
+    categoryId: queryCategoryId,
     city: searchParams.get('city') || '',
     venueId: '',
     sort: 'startTime,asc'
   });
 
-  // Fetch Events when state changes
   useEffect(() => {
     const params = {
       page,
       size: 12,
       search: search || undefined,
-      categoryId: filters.categoryId || undefined,
+      categoryId: (filters.categoryId || queryCategoryId) || undefined,
       venueId: filters.venueId || undefined,
       city: filters.city || undefined,
       sort: filters.sort
     };
     dispatch(fetchEvents(params));
-  }, [dispatch, page, search, filters]);
-
-  // Handle category from URL (Home page redirection)
-  useEffect(() => {
-    const catId = searchParams.get('categoryId');
-    if (catId) {
-      setFilters(prev => ({ ...prev, categoryId: catId }));
-    }
-  }, [searchParams]);
+  }, [dispatch, page, search, filters, queryCategoryId]);
 
   return (
     <main>
@@ -65,7 +56,7 @@ export default function Events() {
               <FiltersSidebar 
                 categories={categories} 
                 venues={venues}
-                filters={filters}
+                filters={{ ...filters, categoryId: filters.categoryId || queryCategoryId }}
                 onFilterChange={(newFilters) => {
                   setPage(0);
                   setFilters(prev => ({ ...prev, ...newFilters }));
@@ -113,4 +104,4 @@ export default function Events() {
       </section>
     </main>
   );
-}
+}

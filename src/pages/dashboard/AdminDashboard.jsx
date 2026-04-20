@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { logoutUser as logout } from '../../features/auth/authSlice';
 import Modal from '../../components/Modal';
+import axiosInstance from '../../api/axiosInstance';
 
 const navItems = [
   {
@@ -14,11 +15,11 @@ const navItems = [
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   },
   {
-    to: '/admin/organizer-approvals', label: 'Organizer Approvals', badge: 2,
+    to: '/admin/organizer-approvals', label: 'Organizer Approvals', badgeKey: 'organizerApprovals',
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
   },
   {
-    to: '/admin/event-approvals', label: 'Event Approvals', badge: 8,
+    to: '/admin/event-approvals', label: 'Event Approvals', badgeKey: 'eventApprovals',
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
   },
   {
@@ -54,7 +55,7 @@ const navItems = [
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   },
   {
-    to: '/admin/notifications', label: 'Notifications', badge: 5,
+    to: '/admin/notifications', label: 'Notifications', badgeKey: 'notifications',
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
   },
   {
@@ -68,6 +69,37 @@ export default function AdminDashboard() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [counts, setCounts] = useState({
+    organizerApprovals: 0,
+    eventApprovals: 0,
+    notifications: 0,
+  });
+
+  useEffect(() => {
+    async function loadCounts() {
+      try {
+        const [organizersRes, eventsRes, notificationsRes] = await Promise.all([
+          axiosInstance.get('/organizer-profiles?status=PENDING&size=1'),
+          axiosInstance.get('/events?status=PENDING_APPROVAL&size=1'),
+          axiosInstance.get('/notifications/unread-count'),
+        ]);
+
+        setCounts({
+          organizerApprovals: organizersRes.data?.totalElements || 0,
+          eventApprovals: eventsRes.data?.totalElements || 0,
+          notifications: notificationsRes.data?.unreadCount || 0,
+        });
+      } catch {
+        setCounts({
+          organizerApprovals: 0,
+          eventApprovals: 0,
+          notifications: 0,
+        });
+      }
+    }
+
+    loadCounts();
+  }, []);
 
   const handleLogout = () => {
     dispatch(logout());
@@ -96,7 +128,7 @@ export default function AdminDashboard() {
             >
               {item.icon}
               <span>{item.label}</span>
-              {item.badge && <span className="dash-badge">{item.badge}</span>}
+              {item.badgeKey && counts[item.badgeKey] > 0 && <span className="dash-badge">{counts[item.badgeKey]}</span>}
             </NavLink>
           ))}
         </nav>

@@ -19,7 +19,11 @@ export default function Login() {
 
   useEffect(() => {
     if (otpSent) {
-      setTimer(150);
+      const timeout = setTimeout(() => {
+        setTimer(150);
+      }, 0);
+
+      return () => clearTimeout(timeout);
     }
   }, [otpSent]);
 
@@ -35,7 +39,7 @@ export default function Login() {
 
   useEffect(() => {
     return () => dispatch(clearError());
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     if (token && user) {

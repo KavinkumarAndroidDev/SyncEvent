@@ -1,4 +1,4 @@
-export default function BookingSummaryPanel({ tickets, cart, preview, discountCode, setDiscountCode, onApplyDiscount, onPayNow, previewLoading, bookingLoading, previewError }) {
+export default function BookingSummaryPanel({ tickets, cart, preview, discountCode, setDiscountCode, onApplyDiscount, onPayNow, previewLoading, bookingLoading, previewError, disableDiscount }) {
     const subtotal = preview?.items?.reduce((s, i) => s + i.lineTotal, 0) ?? tickets.filter(t => cart[t.id]).reduce((s, t) => s + t.price * cart[t.id], 0);
     const discount = preview?.discountAmount || 0;
     const total = preview?.totalAmount ?? subtotal;
@@ -22,10 +22,11 @@ export default function BookingSummaryPanel({ tickets, cart, preview, discountCo
                     <input
                         value={discountCode}
                         onChange={(e) => setDiscountCode(e.target.value)}
+                        disabled={disableDiscount}
                         placeholder="Enter code"
                         style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--neutral-100)', borderRadius: 8, fontSize: 14, fontFamily: 'Inter', outline: 'none' }}
                     />
-                    <button onClick={onApplyDiscount} disabled={previewLoading} style={{ padding: '8px 14px', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'white', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    <button onClick={onApplyDiscount} disabled={previewLoading || disableDiscount} style={{ padding: '8px 14px', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'white', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                         Apply
                     </button>
                 </div>

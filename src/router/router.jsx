@@ -1,6 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { useEffect } from 'react';
+import { createBrowserRouter } from 'react-router-dom';
 import App from '../App';
 import Home from '../pages/Home';
 import Login from '../pages/Login';
@@ -11,8 +9,8 @@ import EventDetail from '../pages/EventDetail';
 import BookingPage from '../pages/BookingPage';
 import About from '../pages/About';
 import Contact from '../pages/Contact';
-import { fetchCurrentUser } from '../features/auth/authSlice';
 import NotFound from '../pages/NotFound';
+import { AuthLoader, GuestRoute, ProtectedRoute } from './routeGuards';
 
 // Attendee Dashboard
 import AttendeeDashboard from '../pages/dashboard/AttendeeDashboard';
@@ -27,6 +25,12 @@ import AdminDashboard from '../pages/dashboard/AdminDashboard';
 import AdminOverview from '../pages/dashboard/views/admin/AdminOverview';
 import AdminCategories from '../pages/dashboard/views/admin/AdminCategories';
 import AdminVenues from '../pages/dashboard/views/admin/AdminVenues';
+import AdminUsers from '../pages/dashboard/views/admin/AdminUsers';
+import AdminOrganizerApprovals from '../pages/dashboard/views/admin/AdminOrganizerApprovals';
+import AdminEventApprovals from '../pages/dashboard/views/admin/AdminEventApprovals';
+import AdminTicketsRegistrations from '../pages/dashboard/views/admin/AdminTicketsRegistrations';
+import AdminPayments from '../pages/dashboard/views/admin/AdminPayments';
+import AdminNotifications from '../pages/dashboard/views/admin/AdminNotifications';
 
 // Organizer Dashboard
 import OrganizerDashboard from '../pages/dashboard/OrganizerDashboard';
@@ -34,47 +38,6 @@ import OrganizerOverview from '../pages/dashboard/views/organizer/OrganizerOverv
 
 // Placeholder
 import DashboardPlaceholder from '../pages/dashboard/views/DashboardPlaceholder';
-
-export function AuthLoader() {
-  const dispatch = useDispatch();
-  const { token, initialized } = useSelector((s) => s.auth);
-
-  useEffect(() => {
-    if (token && !initialized) {
-      dispatch(fetchCurrentUser());
-    }
-  }, [dispatch, initialized, token]);
-
-  return <Outlet />;
-}
-
-export function ProtectedRoute({ allowedRoles } = {}) {
-  const { token, user, initialized } = useSelector((s) => s.auth);
-  if (!token) return <Navigate to="/login" replace />;
-  if (!initialized) return <div className="detail-status">Checking session...</div>;
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
-  }
-  if (allowedRoles?.includes('ORGANIZER') && user?.role === 'ORGANIZER' && user?.verified === false) {
-    return <Navigate to="/" replace />;
-  }
-  return <Outlet />;
-}
-
-export function GuestRoute() {
-  const { token, user, initialized } = useSelector((s) => s.auth);
-
-  if (!token) return <Outlet />;
-  if (!initialized) return <div className="detail-status">Checking session...</div>;
-
-  if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
-  if (user?.role === 'ORGANIZER') {
-    if (user?.verified === false) return <Outlet />;
-    return <Navigate to="/organizer" replace />;
-  }
-
-  return <Navigate to="/dashboard" replace />;
-}
 
 const router = createBrowserRouter([
   {
@@ -120,18 +83,18 @@ const router = createBrowserRouter([
                 element: <AdminDashboard />,
                 children: [
                   { index: true, element: <AdminOverview /> },
-                  { path: 'users', element: <DashboardPlaceholder title="User Management" /> },
-                  { path: 'organizer-approvals', element: <DashboardPlaceholder title="Organizer Approvals" /> },
-                  { path: 'event-approvals', element: <DashboardPlaceholder title="Event Approvals" /> },
+                  { path: 'users', element: <AdminUsers /> },
+                  { path: 'organizer-approvals', element: <AdminOrganizerApprovals /> },
+                  { path: 'event-approvals', element: <AdminEventApprovals /> },
                   { path: 'events', element: <DashboardPlaceholder title="Events" /> },
                   { path: 'offers', element: <DashboardPlaceholder title="Offers" /> },
                   { path: 'categories', element: <AdminCategories /> },
                   { path: 'venues', element: <AdminVenues /> },
-                  { path: 'tickets', element: <DashboardPlaceholder title="Tickets & Registrations" /> },
-                  { path: 'payments', element: <DashboardPlaceholder title="Payments & Revenue" /> },
+                  { path: 'tickets', element: <AdminTicketsRegistrations /> },
+                  { path: 'payments', element: <AdminPayments /> },
                   { path: 'reports', element: <DashboardPlaceholder title="Reports & Analytics" /> },
                   { path: 'feedback', element: <DashboardPlaceholder title="Feedback Moderation" /> },
-                  { path: 'notifications', element: <DashboardPlaceholder title="Notifications" /> },
+                  { path: 'notifications', element: <AdminNotifications /> },
                   { path: 'profile', element: <DashboardPlaceholder title="Admin Profile" /> },
                 ],
               },
