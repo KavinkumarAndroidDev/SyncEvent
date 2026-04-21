@@ -8,15 +8,15 @@ import Button from '../../../components/ui/Button';
 export default function Profile() {
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
-  // Profile Form State
   const [profileForm, setProfileForm] = useState({
     fullName: '',
     phone: '',
     gender: 'OTHER'
   });
 
-  // Password Form State
   const [securityForm, setSecurityForm] = useState({
     otp: '',
     newPassword: '',
@@ -62,7 +62,6 @@ export default function Profile() {
       });
     } catch (err) {
       const msg = err.response?.data?.message || '';
-      // If OTP was already sent, we should still allow the user to proceed to the entry step
       if (msg.toLowerCase().includes('already sent')) {
         setStep('OTP_SENT');
         setModal({ 
@@ -127,7 +126,6 @@ export default function Profile() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         
-        {/* Profile Card - Full Width Stacked */}
         <div className="profile-card">
             <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--neutral-50)' }}>
                 Personal Information
@@ -187,7 +185,6 @@ export default function Profile() {
             </div>
         </div>
 
-        {/* Security Card - Full Width Stacked */}
         <div className="profile-card">
             <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--neutral-50)' }}>
                 Account Security
@@ -224,24 +221,66 @@ export default function Profile() {
 
                     <div className="form-group">
                         <label className="form-label" style={{ fontWeight: 600 }}>New Password</label>
-                        <input 
-                            className="form-input" 
-                            type="password" 
-                            placeholder="Enter new secure password"
-                            value={securityForm.newPassword}
-                            onChange={(e) => setSecurityForm({...securityForm, newPassword: e.target.value})}
-                        />
+                        <div className="password-input-wrap">
+                            <input 
+                                className="form-input" 
+                                type={showNewPassword ? 'text' : 'password'} 
+                                placeholder="Enter new secure password"
+                                value={securityForm.newPassword}
+                                onChange={(e) => setSecurityForm({...securityForm, newPassword: e.target.value})}
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle-btn"
+                                onClick={() => setShowNewPassword(!showNewPassword)}
+                            >
+                                {showNewPassword ? (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19C7 19 2.73 15.89 1 12c.92-2.08 2.49-3.93 4.46-5.31" />
+                                        <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.83 11.83 0 0 1-1.67 2.68" />
+                                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                                        <path d="M1 1l22 22" />
+                                    </svg>
+                                ) : (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="form-group">
                         <label className="form-label" style={{ fontWeight: 600 }}>Confirm New Password</label>
-                        <input 
-                            className="form-input" 
-                            type="password" 
-                            placeholder="Repeat your new password"
-                            value={securityForm.confirmPassword}
-                            onChange={(e) => setSecurityForm({...securityForm, confirmPassword: e.target.value})}
-                        />
+                        <div className="password-input-wrap">
+                            <input 
+                                className="form-input" 
+                                type={showConfirmPassword ? 'text' : 'password'} 
+                                placeholder="Repeat your new password"
+                                value={securityForm.confirmPassword}
+                                onChange={(e) => setSecurityForm({...securityForm, confirmPassword: e.target.value})}
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle-btn"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            >
+                                {showConfirmPassword ? (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19C7 19 2.73 15.89 1 12c.92-2.08 2.49-3.93 4.46-5.31" />
+                                        <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.83 11.83 0 0 1-1.67 2.68" />
+                                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                                        <path d="M1 1l22 22" />
+                                    </svg>
+                                ) : (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
