@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-export default function SearchBar({ onSearch }) {
-  const [input, setInput] = useState('');
+export default function SearchBar({ onSearch, value = '' }) {
+  const [input, setInput] = useState(value);
+
+  useEffect(() => {
+    setInput(value);
+  }, [value]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSearch(input);
+    onSearch(input.trim());
   };
 
   return (
@@ -15,7 +19,13 @@ export default function SearchBar({ onSearch }) {
         type="text"
         placeholder="Search events..."
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {
+          const nextValue = e.target.value;
+          setInput(nextValue);
+          if (!nextValue.trim()) {
+            onSearch('');
+          }
+        }}
       />
       <button type="submit" className="search-btn">
         Search

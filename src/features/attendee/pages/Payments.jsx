@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import axiosInstance from '../../../lib/axios';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
+import { formatDate, formatDateTime, formatMoney } from '../../../utils/formatters';
+import { openPdfDocument } from '../../../utils/documentPrint';
+import Spinner from '../../../components/common/Spinner';
 
 const PAGE_SIZE = 10;
 
@@ -50,7 +53,39 @@ export default function Payments() {
   const totalPages = Math.ceil(filteredPayments.length / PAGE_SIZE);
   const pagedPayments = filteredPayments.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  if (loading) return <div className="p-4">Loading payments...</div>;
+  const printInvoice = () => {
+    if (!selectedInvoice) return;
+    const statusLine = selectedInvoice.status === 'SUCCESS'
+      ? 'This payment was completed successfully.'
+      : selectedInvoice.status === 'FAILED'
+        ? 'This payment failed. If money was deducted, the bank or gateway will reverse it as per policy.'
+        : 'This transaction is pending confirmation.';
+
+    openPdfDocument(`Invoice REF-${selectedInvoice.id}`, `
+      <div class="header">
+        <div>
+          <h1 class="brand">SyncEvent Invoice</h1>
+          <p class="muted">Transaction Reference REF-${selectedInvoice.id}</p>
+        </div>
+        <span class="badge">${selectedInvoice.status}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start;">
+        <div style="flex:1;">
+          <div class="grid">
+            <div class="box"><div class="label">Booking</div><div class="value">#${selectedInvoice.registrationId}</div></div>
+            <div class="box"><div class="label">Created</div><div class="value">${formatDateTime(selectedInvoice.createdAt)}</div></div>
+            <div class="box"><div class="label">Paid At</div><div class="value">${formatDateTime(selectedInvoice.paidAt)}</div></div>
+            <div class="box"><div class="label">Gateway</div><div class="value">${selectedInvoice.paymentMode || 'Razorpay'}</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="row"><span>Event Registration Fee</span><strong>${formatMoney(selectedInvoice.amount)}</strong></div>
+      <div class="total">Total: ${formatMoney(selectedInvoice.amount)}</div>
+      <p class="note">${statusLine}</p>
+    `);
+  };
+
+  if (loading) return <Spinner label="Loading payments..." />;
 
   return (
     <div className="view-container">
@@ -81,7 +116,7 @@ export default function Payments() {
           }}
         >
           <option value="ALL">All Status</option>
-          <option value="COMPLETED">Completed</option>
+          <option value="SUCCESS">Success</option>
           <option value="PENDING">Pending</option>
           <option value="FAILED">Failed</option>
         </select>
@@ -117,8 +152,8 @@ export default function Payments() {
             {pagedPayments.map((payment, index) => (
               <tr key={payment.id}>
                 <td style={{ color: 'var(--neutral-400)', width: 40 }}>{page * PAGE_SIZE + index + 1}</td>
-                <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
-                <td style={{ fontWeight: 700 }}>Rs. {payment.amount}</td>
+                <td>{formatDate(payment.createdAt)}</td>
+                <td style={{ fontWeight: 700 }}>{formatMoney(payment.amount)}</td>
                 <td>{payment.paymentMode || 'Razorpay'}</td>
                 <td>
                   <span className={`badge badge-${payment.status?.toLowerCase()}`}>{payment.status}</span>
@@ -163,7 +198,7 @@ export default function Payments() {
           actions={
             <div style={{ display: 'flex', gap: 12, width: '100%', justifyContent: 'flex-end' }}>
               <Button variant="secondary" onClick={() => setSelectedInvoice(null)}>Close</Button>
-              <Button onClick={() => window.print()}>Print / Download</Button>
+              <Button onClick={printInvoice}>Generate PDF</Button>
             </div>
           }
         >
@@ -185,7 +220,7 @@ export default function Payments() {
               </div>
               <div className="receipt-row">
                 <span className="label">Payment Date</span>
-                <span className="value">{new Date(selectedInvoice.createdAt).toLocaleString()}</span>
+                <span className="value">{formatDateTime(selectedInvoice.createdAt)}</span>
               </div>
               {selectedInvoice.razorpayPaymentId && (
                 <div className="receipt-row">
@@ -206,14 +241,14 @@ export default function Payments() {
               </div>
               <div className="receipt-item-row">
                 <span>Event Registration Fee (Booking #{selectedInvoice.registrationId})</span>
-                <span style={{ fontWeight: 600 }}>Rs. {selectedInvoice.amount}</span>
+                <span style={{ fontWeight: 600 }}>{formatMoney(selectedInvoice.amount)}</span>
               </div>
 
               <div className="receipt-total">
                 <span className="total-label">
                   {selectedInvoice.status === 'FAILED' ? 'Payable Amount' : 'Total Amount Paid'}
                 </span>
-                <span className="total-value">Rs. {selectedInvoice.amount}</span>
+                <span className="total-value">{formatMoney(selectedInvoice.amount)}</span>
               </div>
 
               {selectedInvoice.status === 'FAILED' && (
@@ -225,7 +260,11 @@ export default function Payments() {
 
             <div className="receipt-footer">
               <p>Digital receipt generated by SyncEvent EMS Platform.</p>
-              <div className="footer-ty">We look forward to seeing you at the event!</div>
+              <div className="footer-ty">
+                {selectedInvoice.status === 'FAILED' 
+                  ? 'Your payment could not be processed. Please try again.' 
+                  : 'We look forward to seeing you at the event!'}
+              </div>
             </div>
           </div>
         </Modal>

@@ -3,8 +3,7 @@ import axiosInstance from '../../../lib/axios';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
-
-const PAGE_SIZE = 10;
+import { formatDateTime, formatMoney } from '../../../utils/formatters';
 
 export default function AdminPayments() {
   const [payments, setPayments] = useState([]);
@@ -13,6 +12,7 @@ export default function AdminPayments() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     async function loadPayments() {
@@ -40,13 +40,27 @@ export default function AdminPayments() {
     });
   }, [payments, search, statusFilter]);
 
-  const totalPages = Math.ceil(filteredPayments.length / PAGE_SIZE);
-  const pagedPayments = filteredPayments.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredPayments.length / pageSize);
+  const pagedPayments = filteredPayments.slice(page * pageSize, (page + 1) * pageSize);
+
+  function exportPayments() {
+    const rows = [
+      ['ID', 'Booking', 'Created', 'Amount', 'Status', 'Gateway Payment ID'],
+      ...filteredPayments.map((p) => [p.id, p.registrationId, p.createdAt, p.amount, p.status, p.razorpayPaymentId || '']),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'payments.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div style={{ padding: 40 }}>
       <div className="view-header">
-        <h2 className="view-title">Payments & Revenue</h2>
+        <h2 className="view-title">Transactions & Revenue</h2>
         <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Monitor all payment records across the platform.</p>
       </div>
 
@@ -67,6 +81,13 @@ export default function AdminPayments() {
           <option value="PENDING">Pending</option>
           <option value="FAILED">Failed</option>
         </select>
+        <select className="form-input" style={{ width: 150 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <option value={5}>5 per page</option>
+          <option value={10}>10 per page</option>
+          <option value={20}>20 per page</option>
+          <option value={50}>50 per page</option>
+        </select>
+        <Button variant="secondary" onClick={exportPayments}>Export</Button>
       </div>
 
       <div className="table-responsive">
@@ -85,11 +106,11 @@ export default function AdminPayments() {
           <tbody>
             {!loading && pagedPayments.map((payment, index) => (
               <tr key={payment.id}>
-                <td>{page * PAGE_SIZE + index + 1}</td>
+                <td>{page * pageSize + index + 1}</td>
                 <td>REF-{payment.id}</td>
                 <td>#{payment.registrationId || '-'}</td>
-                <td>{payment.createdAt ? new Date(payment.createdAt).toLocaleString() : '-'}</td>
-                <td style={{ fontWeight: 700 }}>Rs. {Number(payment.amount || 0).toLocaleString()}</td>
+                <td>{formatDateTime(payment.createdAt)}</td>
+                <td style={{ fontWeight: 700 }}>{formatMoney(payment.amount)}</td>
                 <td><span className={`badge badge-${String(payment.status || '').toLowerCase()}`}>{payment.status}</span></td>
                 <td><Button variant="table" onClick={() => setSelectedInvoice(payment)}>View</Button></td>
               </tr>
@@ -124,14 +145,14 @@ export default function AdminPayments() {
           <div className="invoice-receipt">
             <div className="receipt-row"><span className="label">Reference</span><span className="value">REF-{selectedInvoice.id}</span></div>
             <div className="receipt-row"><span className="label">Booking</span><span className="value">#{selectedInvoice.registrationId}</span></div>
-            <div className="receipt-row"><span className="label">Created</span><span className="value">{selectedInvoice.createdAt ? new Date(selectedInvoice.createdAt).toLocaleString() : '-'}</span></div>
-            <div className="receipt-row"><span className="label">Paid At</span><span className="value">{selectedInvoice.paidAt ? new Date(selectedInvoice.paidAt).toLocaleString() : '-'}</span></div>
+            <div className="receipt-row"><span className="label">Created</span><span className="value">{formatDateTime(selectedInvoice.createdAt)}</span></div>
+            <div className="receipt-row"><span className="label">Paid At</span><span className="value">{formatDateTime(selectedInvoice.paidAt)}</span></div>
             <div className="receipt-row"><span className="label">Gateway</span><span className="value">{selectedInvoice.gateway || 'Razorpay'}</span></div>
             <div className="receipt-row"><span className="label">Order ID</span><span className="value">{selectedInvoice.razorpayOrderId || '-'}</span></div>
             <div className="receipt-row"><span className="label">Payment ID</span><span className="value">{selectedInvoice.razorpayPaymentId || '-'}</span></div>
             <div className="receipt-total">
               <span className="total-label">Amount</span>
-              <span className="total-value">Rs. {Number(selectedInvoice.amount || 0).toLocaleString()}</span>
+              <span className="total-value">{formatMoney(selectedInvoice.amount)}</span>
             </div>
           </div>
         </Modal>

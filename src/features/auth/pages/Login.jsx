@@ -71,16 +71,17 @@ export default function Login() {
   };
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
+    const nextForm = { ...form, [e.target.name]: e.target.value };
+    setForm(nextForm);
+    setErrors(validatePassword(nextForm));
     if (error) dispatch(clearError());
   };
 
-  const validatePassword = () => {
+  const validatePassword = (values = form) => {
     const errs = {};
-    if (!form.email.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email';
-    if (!form.password) errs.password = 'Password is required';
+    if (!values.email.trim()) errs.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(values.email)) errs.email = 'Enter a valid email';
+    if (!values.password) errs.password = 'Password is required';
     return errs;
   };
 
@@ -138,6 +139,7 @@ export default function Login() {
           <form onSubmit={handlePasswordLogin} className="auth-form" noValidate>
             <Input
               label="Email"
+              required
               type="email"
               name="email"
               placeholder="you@example.com"
@@ -147,6 +149,7 @@ export default function Login() {
             />
             <Input
               label="Password"
+              required
               type="password"
               name="password"
               placeholder="Enter your password"
@@ -162,6 +165,7 @@ export default function Login() {
           <form onSubmit={handleSendOtp} className="auth-form" noValidate>
             <Input
               label="Email or Phone"
+              required
               type="text"
               name="identifier"
               placeholder="you@example.com or 9876543210"
@@ -185,6 +189,7 @@ export default function Login() {
 
             <Input
               label="Enter OTP"
+              required
               type="text"
               name="otp"
               placeholder="6-digit OTP"
@@ -231,9 +236,6 @@ export default function Login() {
 
         <p className="auth-switch">
           Don&apos;t have an account? <Link to="/register">Sign up</Link>
-        </p>
-        <p className="auth-switch" style={{ marginTop: 4 }}>
-          Want to host events? <Link to="/register/organizer">Register as Organizer</Link>
         </p>
       </div>
     </div>

@@ -33,31 +33,32 @@ export default function RegisterOrganizer() {
   }, [dispatch]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
+    const nextForm = { ...form, [e.target.name]: e.target.value };
+    setForm(nextForm);
+    setErrors(step === 1 ? validateStep1(nextForm) : validateStep2(nextForm));
     setApiError('');
   };
 
-  const validateStep1 = () => {
+  const validateStep1 = (values = form) => {
     const errs = {};
-    if (!form.fullName.trim()) errs.fullName = 'Full name is required';
-    else if (form.fullName.trim().length < 3) errs.fullName = 'Name must be at least 3 characters';
+    if (!values.fullName.trim()) errs.fullName = 'Full name is required';
+    else if (values.fullName.trim().length < 3) errs.fullName = 'Name must be at least 3 characters';
 
-    if (!form.email.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email';
+    if (!values.email.trim()) errs.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(values.email)) errs.email = 'Enter a valid email';
 
     const strongPwd = /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/;
-    if (!form.password) errs.password = 'Password is required';
-    else if (!strongPwd.test(form.password)) errs.password = 'Min 8 chars with uppercase, lowercase, number and special character';
+    if (!values.password) errs.password = 'Password is required';
+    else if (!strongPwd.test(values.password)) errs.password = 'Min 8 chars with uppercase, lowercase, number and special character';
 
-    if (form.phone && !/^[0-9]{10}$/.test(form.phone)) errs.phone = 'Phone must be 10 digits';
+    if (values.phone && !/^[0-9]{10}$/.test(values.phone)) errs.phone = 'Phone must be 10 digits';
 
     return errs;
   };
 
-  const validateStep2 = () => {
+  const validateStep2 = (values = form) => {
     const errs = {};
-    if (!form.organizationName.trim()) errs.organizationName = 'Organization name is required';
+    if (!values.organizationName.trim()) errs.organizationName = 'Organization name is required';
     return errs;
   };
 
@@ -153,7 +154,8 @@ export default function RegisterOrganizer() {
           <div className="auth-form">
             <div className="form-row">
               <Input
-                label="Full Name *"
+                label="Full Name"
+                required
                 name="fullName"
                 placeholder="John Doe"
                 value={form.fullName}
@@ -161,7 +163,8 @@ export default function RegisterOrganizer() {
                 error={errors.fullName}
               />
               <Input
-                label="Email *"
+                label="Email"
+                required
                 type="email"
                 name="email"
                 placeholder="you@company.com"
@@ -172,7 +175,8 @@ export default function RegisterOrganizer() {
             </div>
 
             <Input
-              label="Password *"
+              label="Password"
+              required
               type="password"
               name="password"
               placeholder="Min 8 chars, uppercase, number, symbol"
@@ -219,7 +223,8 @@ export default function RegisterOrganizer() {
             </button>
 
             <Input
-              label="Organization Name *"
+              label="Organization Name"
+              required
               name="organizationName"
               placeholder="Acme Events Pvt Ltd"
               value={form.organizationName}

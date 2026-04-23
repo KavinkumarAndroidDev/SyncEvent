@@ -7,8 +7,9 @@ import Button from '../../../components/ui/Button';
 import AdminToolbar from '../components/AdminToolbar';
 import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
+import AdminConfirmModal from '../components/AdminConfirmModal';
+import { exportCsv } from '../utils/adminUtils';
 
-const PAGE_SIZE = 6;
 const EMPTY_FORM = { categoryName: '' };
 
 export default function AdminCategories() {
@@ -18,6 +19,7 @@ export default function AdminCategories() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name-asc');
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -25,6 +27,7 @@ export default function AdminCategories() {
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
+  const [confirm, setConfirm] = useState(null);
 
   async function loadCategories() {
     try {
@@ -56,8 +59,12 @@ export default function AdminCategories() {
     return result;
   }, [items, search, sort]);
 
-  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE);
-  const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredItems.length / pageSize);
+  const pagedItems = filteredItems.slice(page * pageSize, (page + 1) * pageSize);
+
+  function exportItems() {
+    exportCsv('categories.csv', ['ID', 'Name', 'Status'], filteredItems.map((item) => [item.id, item.name, item.status]));
+  }
 
   function openCreateModal() {
     setEditingItem(null);
@@ -121,16 +128,29 @@ export default function AdminCategories() {
 
   async function toggleStatus(item) {
     try {
+      setSaving(true);
       const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
       await axiosInstance.patch(`/categories/${item.id}/status`, { status: nextStatus });
       setMessageType('success');
       setMessage(`Category marked as ${nextStatus.toLowerCase()}.`);
+      setConfirm(null);
       await loadCategories();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
       setMessage(err.response?.data?.message || 'Unable to update category status.');
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function askToggleStatus(item) {
+    const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    setConfirm({
+      title: 'Update Category Status',
+      message: `Are you sure you want to mark ${item.name} as ${nextStatus}?`,
+      onConfirm: () => toggleStatus(item),
+    });
   }
 
   return (
@@ -148,6 +168,12 @@ export default function AdminCategories() {
           setSort(value);
           setPage(0);
         }}
+        pageSize={pageSize}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(0);
+        }}
+        onExport={exportItems}
         sortOptions={[
           { value: 'name-asc', label: 'Name A-Z' },
           { value: 'name-desc', label: 'Name Z-A' },
@@ -177,13 +203,13 @@ export default function AdminCategories() {
           <tbody>
             {!loading && pagedItems.map((item, index) => (
               <tr key={item.id}>
-                <td>{page * PAGE_SIZE + index + 1}</td>
+                <td>{page * pageSize + index + 1}</td>
                 <td style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.name}</td>
                 <td><AdminStatusBadge status={item.status} /></td>
                 <td>
                   <div className="row-actions">
                     <Button variant="table" onClick={() => openEditModal(item)}>Edit</Button>
-                    <Button variant="table" onClick={() => toggleStatus(item)}>
+                    <Button variant="table" onClick={() => askToggleStatus(item)}>
                       {item.status === 'ACTIVE' ? 'Disable' : 'Enable'}
                     </Button>
                   </div>
@@ -220,6 +246,12 @@ export default function AdminCategories() {
         onChange={handleFormChange}
         onClose={closeModal}
         onSubmit={handleSubmit}
+      />
+      <AdminConfirmModal
+        confirm={confirm}
+        loading={saving}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
       />
     </div>
   );

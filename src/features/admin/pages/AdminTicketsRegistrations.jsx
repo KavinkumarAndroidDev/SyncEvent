@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import axiosInstance from '../../../lib/axios';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
-
-const PAGE_SIZE = 8;
+import { formatDateTime, formatMoney } from '../../../utils/formatters';
+import { exportCsv } from '../utils/adminUtils';
 
 export default function AdminTicketsRegistrations() {
   const [events, setEvents] = useState([]);
@@ -13,6 +13,8 @@ export default function AdminTicketsRegistrations() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [timeRange, setTimeRange] = useState('ALL');
 
   useEffect(() => {
     async function loadReports() {
@@ -54,31 +56,86 @@ export default function AdminTicketsRegistrations() {
   }, [selectedEvent]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((item) => item.eventTitle?.toLowerCase().includes(search.toLowerCase()));
-  }, [events, search]);
+    let result = events.filter((item) => item.eventTitle?.toLowerCase().includes(search.toLowerCase()));
+    
+    if (timeRange !== 'ALL') {
+      const now = new Date();
+      let from = new Date();
+      if (timeRange === '7d') from.setDate(now.getDate() - 7);
+      else if (timeRange === '30d') from.setDate(now.getDate() - 30);
+      else if (timeRange === '6m') from.setMonth(now.getMonth() - 6);
+      else if (timeRange === '1y') from.setFullYear(now.getFullYear() - 1);
+      
+      result = result.filter(ev => new Date(ev.startTime) >= from);
+    }
+    
+    return result;
+  }, [events, search, timeRange]);
 
-  const totalPages = Math.ceil(filteredEvents.length / PAGE_SIZE);
-  const pagedEvents = filteredEvents.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredEvents.length / pageSize);
+  const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
+
+  function exportEvents() {
+    exportCsv('tickets-registrations.csv', ['Event ID', 'Title', 'Status', 'Confirmed', 'Total Registrations', 'Participants', 'Revenue'], filteredEvents.map((item) => [
+      item.eventId,
+      item.eventTitle,
+      item.status,
+      item.confirmedRegistrations,
+      item.totalRegistrations,
+      item.totalParticipants,
+      item.netRevenue,
+    ]));
+  }
 
   return (
     <div style={{ padding: 40 }}>
       <div className="view-header">
-        <h2 className="view-title">Tickets & Registrations</h2>
+        <h2 className="view-title">Ticket Booking</h2>
         <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Check registration counts and ticket sales event by event.</p>
       </div>
 
       <div className="admin-two-col">
         <div>
-          <input
-            className="form-input"
-            style={{ marginBottom: 16 }}
-            placeholder="Search event..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-          />
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: '24px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
+          {['ALL', '7d', '30d', '6m', '1y'].map(r => (
+            <button
+              key={r}
+              onClick={() => { setTimeRange(r); setPage(0); }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                border: 'none',
+                background: timeRange === r ? 'white' : 'transparent',
+                boxShadow: timeRange === r ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                color: timeRange === r ? 'var(--neutral-900)' : 'var(--neutral-500)',
+                cursor: 'pointer'
+              }}
+            >
+              {r === 'ALL' ? 'All Time' : r.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1 }}></div>
+        <input
+          className="form-input"
+          style={{ width: 280 }}
+          placeholder="Search event..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
+        />
+        <select className="form-input" style={{ width: 130 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <option value={5}>5 per page</option>
+          <option value={10}>10 per page</option>
+          <option value={20}>20 per page</option>
+        </select>
+        <Button variant="secondary" onClick={exportEvents}>Export</Button>
+      </div>
 
           <div className="table-responsive">
             <table className="dashboard-table">
@@ -94,10 +151,10 @@ export default function AdminTicketsRegistrations() {
               <tbody>
                 {!loading && pagedEvents.map((item, index) => (
                   <tr key={item.eventId}>
-                    <td>{page * PAGE_SIZE + index + 1}</td>
+                    <td>{page * pageSize + index + 1}</td>
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.eventTitle}</div>
-                      <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{item.startTime ? new Date(item.startTime).toLocaleString() : '-'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{formatDateTime(item.startTime)}</div>
                     </td>
                     <td><span className={`badge badge-${String(item.status || '').toLowerCase().replaceAll('_', '-')}`}>{item.status}</span></td>
                     <td>{item.confirmedRegistrations || 0} / {item.totalRegistrations || 0}</td>
@@ -136,7 +193,7 @@ export default function AdminTicketsRegistrations() {
               <div><strong>Registrations:</strong> {selectedEvent.totalRegistrations || 0}</div>
               <div><strong>Confirmed:</strong> {selectedEvent.confirmedRegistrations || 0}</div>
               <div><strong>Participants:</strong> {selectedEvent.totalParticipants || 0}</div>
-              <div><strong>Revenue:</strong> Rs. {Number(selectedEvent.netRevenue || 0).toLocaleString()}</div>
+              <div><strong>Total Revenue:</strong> {formatMoney(ticketSales.reduce((sum, t) => sum + (t.revenue || 0), 0))}</div>
             </div>
           )}
 
@@ -155,10 +212,10 @@ export default function AdminTicketsRegistrations() {
                 {!detailsLoading && ticketSales.map((item) => (
                   <tr key={item.ticketId}>
                     <td style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.ticketName}</td>
-                    <td>Rs. {Number(item.price || 0).toLocaleString()}</td>
+                    <td>{formatMoney(item.price)}</td>
                     <td>{item.soldQuantity || 0} / {item.totalQuantity || 0}</td>
                     <td>{item.availableQuantity || 0}</td>
-                    <td>Rs. {Number(item.revenue || 0).toLocaleString()}</td>
+                    <td>{formatMoney(item.revenue)}</td>
                   </tr>
                 ))}
                 {!detailsLoading && ticketSales.length === 0 && (

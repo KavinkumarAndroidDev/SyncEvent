@@ -5,7 +5,8 @@ export default function TicketCard({ ticket, qty, onAdd, onIncrease, onDecrease 
 
     const saleNotStarted = saleStart && now < saleStart;
     const saleEnded = saleEnd && now > saleEnd;
-    const soldOut = ticket.availableQuantity === 0;
+    const visibleAvailable = Math.max(0, Number(ticket.availableQuantity || 0) - Number(qty || 0));
+    const soldOut = Number(ticket.availableQuantity || 0) === 0;
 
     // Card is fully disabled — no interaction allowed at all
     const isDisabled = saleNotStarted || saleEnded || soldOut;
@@ -39,7 +40,7 @@ export default function TicketCard({ ticket, qty, onAdd, onIncrease, onDecrease 
                     </div>
                     {!isDisabled && ticket.availableQuantity > 0 && (
                         <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 2 }}>
-                            {ticket.availableQuantity} left
+                            {visibleAvailable} left
                         </div>
                     )}
 

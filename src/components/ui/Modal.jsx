@@ -1,9 +1,9 @@
-export default function Modal({ isOpen, onClose, title, children, actions }) {
+export default function Modal({ isOpen, onClose, title, children, actions, maxWidth = '440px' }) {
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" style={{ zIndex: 1000 }}>
-      <div className="modal-box" style={{ maxWidth: '440px', padding: '24px' }}>
+      <div className="modal-box" style={{ maxWidth: maxWidth, width: '100%', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="modal-header" style={{ marginBottom: '20px' }}>
           <h3 style={{ fontFamily: 'DM Sans', fontWeight: 700, margin: 0 }}>{title}</h3>
           <button className="close-btn" onClick={onClose}>&times;</button>

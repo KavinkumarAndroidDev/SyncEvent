@@ -28,7 +28,7 @@ export default function AdminEntityModal({
         {fields.map((field) => (
           <div key={field.name}>
             <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>
-              {field.label}
+              {field.label}{field.required !== false && <span style={{ color: '#dc2626' }}> *</span>}
             </label>
             {field.type === 'textarea' ? (
               <textarea

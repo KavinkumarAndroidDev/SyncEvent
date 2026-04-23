@@ -7,8 +7,8 @@ import Button from '../../../components/ui/Button';
 import AdminToolbar from '../components/AdminToolbar';
 import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
-
-const PAGE_SIZE = 5;
+import AdminConfirmModal from '../components/AdminConfirmModal';
+import { exportCsv } from '../utils/adminUtils';
 const EMPTY_FORM = { name: '', address: '', city: '', state: '', capacity: '' };
 
 export default function AdminVenues() {
@@ -19,6 +19,8 @@ export default function AdminVenues() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name-asc');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [confirm, setConfirm] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -60,8 +62,20 @@ export default function AdminVenues() {
     return result;
   }, [items, search, sort]);
 
-  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE);
-  const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredItems.length / pageSize);
+  const pagedItems = filteredItems.slice(page * pageSize, (page + 1) * pageSize);
+
+  function exportVenues() {
+    exportCsv('venues.csv', ['ID', 'Name', 'Address', 'City', 'State', 'Capacity', 'Status'], filteredItems.map((item) => [
+      item.id,
+      item.name,
+      item.address,
+      item.city,
+      item.state,
+      item.capacity,
+      item.status,
+    ]));
+  }
 
   function openCreateModal() {
     setEditingItem(null);
@@ -134,6 +148,7 @@ export default function AdminVenues() {
       closeModal();
       await loadVenues();
       dispatch(fetchMetadata());
+      setConfirm(null);
     } catch (err) {
       setMessageType('error');
       setMessage(err.response?.data?.message || 'Unable to save venue.');
@@ -144,6 +159,7 @@ export default function AdminVenues() {
 
   async function toggleStatus(item) {
     try {
+      setSaving(true);
       const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
       await axiosInstance.patch(`/venues/${item.id}/status`, { status: nextStatus });
       setMessageType('success');
@@ -153,7 +169,18 @@ export default function AdminVenues() {
     } catch (err) {
       setMessageType('error');
       setMessage(err.response?.data?.message || 'Unable to update venue status.');
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function askToggleStatus(item) {
+    const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    setConfirm({
+      title: 'Update Venue Status',
+      message: `Are you sure you want to mark ${item.name} as ${nextStatus}?`,
+      onConfirm: () => toggleStatus(item),
+    });
   }
 
   return (
@@ -180,6 +207,12 @@ export default function AdminVenues() {
         ]}
         actionLabel="Add Venue"
         onAction={openCreateModal}
+        pageSize={pageSize}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(0);
+        }}
+        onExport={exportVenues}
       />
 
       {message && (
@@ -203,7 +236,7 @@ export default function AdminVenues() {
           <tbody>
             {!loading && pagedItems.map((item, index) => (
               <tr key={item.id}>
-                <td>{page * PAGE_SIZE + index + 1}</td>
+                <td>{page * pageSize + index + 1}</td>
                 <td>
                   <div style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{item.address}</div>
@@ -214,7 +247,7 @@ export default function AdminVenues() {
                 <td>
                   <div className="row-actions">
                     <Button variant="table" onClick={() => openEditModal(item)}>Edit</Button>
-                    <Button variant="table" onClick={() => toggleStatus(item)}>
+                    <Button variant="table" onClick={() => askToggleStatus(item)}>
                       {item.status === 'ACTIVE' ? 'Disable' : 'Enable'}
                     </Button>
                   </div>
@@ -257,6 +290,12 @@ export default function AdminVenues() {
         onChange={handleFormChange}
         onClose={closeModal}
         onSubmit={handleSubmit}
+      />
+      <AdminConfirmModal
+        confirm={confirm}
+        loading={saving}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
       />
     </div>
   );

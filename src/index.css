@@ -180,6 +180,13 @@ html, body { height: 100%; }
 .search-btn { padding: 9px 20px; background: var(--neutral-900); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .search-btn:hover { background: var(--neutral-600); }
 
+@media (max-width: 600px) {
+  .events-page-header { padding: 24px 0 16px; }
+  .events-page-title { font-size: 22px; margin-bottom: 12px; }
+  .search-form { flex-direction: column; }
+  .search-btn { width: 100%; }
+}
+
 .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 40px; flex-wrap: wrap; }
 .page-btn { padding: 7px 14px; font-size: 14px; border: 1px solid var(--neutral-100); border-radius: 8px; background: white; cursor: pointer; color: var(--neutral-900); }
 .page-btn:hover:not(:disabled) { border-color: var(--neutral-900); }
@@ -331,8 +338,8 @@ html, body { height: 100%; }
 .modal-btn-cancel:hover { border-color: var(--neutral-400); }
 .modal-btn-confirm { padding: 8px 18px; border: none; border-radius: 20px; background: var(--error); color: var(--white); font-size: 14px; font-weight: 600; cursor: pointer; }
 .modal-btn-confirm:hover { background: #dc2626; }
-.auth-link-btn { background: none; border: none; color: var(--primary); font-size: 13px; cursor: pointer; padding: 0; margin-top: 8px; }
-.auth-link-btn:hover { text-decoration: underline; }
+.auth-link-btn { background: var(--neutral-50); border: 1px solid var(--neutral-100); color: var(--neutral-900); font-size: 13px; font-weight: 600; cursor: pointer; padding: 9px 14px; margin-top: 8px; border-radius: 999px; width: fit-content; }
+.auth-link-btn:hover { border-color: var(--primary); color: var(--primary); }
 .auth-tabs { display: flex; background: var(--neutral-50); border-radius: 8px; padding: 4px; gap: 4px; margin-bottom: 16px; }
 .auth-tab { flex: 1; text-align: center; padding: 8px 0; font-size: 14px; font-weight: 500; color: var(--neutral-400); border-radius: 6px; cursor: pointer; }
 .auth-tab:hover { color: var(--neutral-900); }
@@ -1271,6 +1278,11 @@ html, body { height: 100%; }
   .dash-badge { display: none; }
   .dash-main { flex: 1; overflow-y: auto; }
   .admin-stat-grid { grid-template-columns: 1fr; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 

@@ -2,6 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useEffect } from 'react';
 import { fetchCurrentUser } from '../features/auth/slices/authSlice';
+import Spinner from '../components/common/Spinner';
 
 export function AuthLoader() {
   const dispatch = useDispatch();
@@ -20,7 +21,7 @@ export function ProtectedRoute({ allowedRoles } = {}) {
   const { token, user, initialized } = useSelector((s) => s.auth);
 
   if (!token) return <Navigate to="/login" replace />;
-  if (!initialized) return <div className="detail-status">Checking session...</div>;
+  if (!initialized) return <Spinner label="Checking session..." />;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
@@ -31,11 +32,25 @@ export function ProtectedRoute({ allowedRoles } = {}) {
   return <Outlet />;
 }
 
+export function PublicRoute() {
+  const { token, user, initialized } = useSelector((s) => s.auth);
+
+  if (!token || !initialized) return <Outlet />;
+
+  if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
+  if (user?.role === 'ORGANIZER') {
+    if (user?.verified === false) return <Outlet />;
+    return <Navigate to="/organizer" replace />;
+  }
+
+  return <Outlet />;
+}
+
 export function GuestRoute() {
   const { token, user, initialized } = useSelector((s) => s.auth);
 
   if (!token) return <Outlet />;
-  if (!initialized) return <div className="detail-status">Checking session...</div>;
+  if (!initialized) return <Spinner label="Checking session..." />;
 
   if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
   if (user?.role === 'ORGANIZER') {

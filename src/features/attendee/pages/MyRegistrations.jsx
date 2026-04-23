@@ -1,11 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import axiosInstance from '../../../lib/axios';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
+import { formatDate, formatDateTime } from '../../../utils/formatters';
+import { openPdfDocument } from '../../../utils/documentPrint';
+import Spinner from '../../../components/common/Spinner';
 
 const PAGE_SIZE = 10;
 
 export default function MyRegistrations() {
+  const { user } = useSelector((state) => state.auth);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -61,6 +66,50 @@ export default function MyRegistrations() {
     }
   };
 
+  const printPass = () => {
+    if (!selectedBooking || selectedBooking.status !== 'CONFIRMED') return;
+    const ticketRows = (selectedBooking.items || []).map((item) => (
+      `<div class="row"><span>${item.ticketName}</span><strong>x ${item.quantity}</strong></div>`
+    )).join('');
+
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=REF-${selectedBooking.id}`;
+
+    openPdfDocument(`Event Pass REF-${selectedBooking.id}`, `
+      <div class="header">
+        <div>
+          <h1 class="brand">SyncEvent Pass</h1>
+          <p class="muted">Reference REF-${selectedBooking.id}</p>
+        </div>
+        <span class="badge">${selectedBooking.status}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start;">
+        <div style="flex:1;">
+          <h2 style="margin:0 0 8px;font-size:26px;">${selectedBooking.eventTitle}</h2>
+          <p class="muted">Show this pass at the event entrance for verification.</p>
+          <div class="grid">
+            <div class="box"><div class="label">Booking ID</div><div class="value">#${selectedBooking.id}</div></div>
+            <div class="box"><div class="label">Event Date</div><div class="value">${formatDateTime(selectedBooking.eventStartTime)}</div></div>
+            <div class="box"><div class="label">Generated On</div><div class="value">${formatDate(new Date())}</div></div>
+            <div class="box"><div class="label">Status</div><div class="value">${selectedBooking.status}</div></div>
+          </div>
+          <h3 style="margin-top:24px; margin-bottom: 8px; font-size: 18px;">Participant Details</h3>
+          <div class="grid" style="margin-bottom: 16px;">
+            <div class="box"><div class="label">Name</div><div class="value">${user?.fullName || 'N/A'}</div></div>
+            <div class="box"><div class="label">Email</div><div class="value">${user?.email || 'N/A'}</div></div>
+            <div class="box"><div class="label">Phone</div><div class="value">${user?.phone || 'N/A'}</div></div>
+          </div>
+        </div>
+        <div style="text-align: center; border: 1px solid #e5e7eb; padding: 12px; border-radius: 8px; background: white;">
+          <img src="${qrCodeUrl}" alt="QR Code" style="width: 120px; height: 120px;" />
+          <p style="font-size: 12px; color: #6b7280; margin-top: 8px; margin-bottom: 0;">Scan to verify</p>
+        </div>
+      </div>
+      <h3 style="margin-top:24px;">Tickets</h3>
+      ${ticketRows}
+      <p class="note">Please carry a valid ID proof. This pass is valid only for the registered booking and current booking status.</p>
+    `);
+  };
+
   const showPass = async (id) => {
     try {
       const res = await axiosInstance.get(`/bookings/${id}`);
@@ -87,7 +136,7 @@ export default function MyRegistrations() {
   const totalPages = Math.ceil(filteredBookings.length / PAGE_SIZE);
   const pagedBookings = filteredBookings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  if (loading) return <div className="p-4">Loading registrations...</div>;
+  if (loading) return <Spinner label="Loading registrations..." />;
 
   return (
     <div className="view-container">
@@ -149,13 +198,13 @@ export default function MyRegistrations() {
                   <tr key={b.id}>
                     <td style={{ color: 'var(--neutral-400)', width: 40 }}>{page * PAGE_SIZE + idx + 1}</td>
                     <td>{b.eventTitle}</td>
-                    <td>{new Date(b.createdAt).toLocaleDateString()}</td>
+                    <td>{formatDate(b.createdAt)}</td>
                     <td>
                       <span className={`badge badge-${b.status?.toLowerCase()}`}>{b.status}</span>
                     </td>
                     <td>
                       <div className="row-actions">
-                        <Button variant="table" onClick={() => showPass(b.id)}>View Pass</Button>
+                        <Button variant="table" onClick={() => showPass(b.id)}>View Details</Button>
                         {b.status === 'CONFIRMED' && (
                           <Button variant="table" className="btn-cancel" onClick={() => setConfirmCancel(b)}>Cancel</Button>
                         )}
@@ -188,24 +237,41 @@ export default function MyRegistrations() {
       {selectedBooking && (
         <Modal
           isOpen={!!selectedBooking}
-          title="Event Pass"
+          title={selectedBooking.status === 'CONFIRMED' ? 'Event Pass' : 'Registration Details'}
           onClose={() => setSelectedBooking(null)}
-          actions={<Button onClick={() => window.print()}>Print Pass</Button>}
+          actions={selectedBooking.status === 'CONFIRMED' ? <Button onClick={printPass}>Download Tickets</Button> : null}
         >
           <div className="pass-body">
-            <div className="pass-row">
-              <strong>Reference:</strong> <span>REF-{selectedBooking.id}</span>
+            {selectedBooking.status === 'CONFIRMED' && (
+              <div style={{ textAlign: 'center', marginBottom: '24px', padding: '16px', background: 'white', border: '1px solid var(--neutral-100)', borderRadius: '12px' }}>
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=REF-${selectedBooking.id}`} 
+                  alt="QR Code" 
+                  style={{ width: '120px', height: '120px' }}
+                />
+                <p style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '8px' }}>Scan this code at the venue</p>
+                <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 600, marginTop: '8px' }}>
+                  Please download and print the ticket before attending the event
+                </p>
+              </div>
+            )}
+            <div className="pass-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <strong style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>Reference:</strong> 
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>REF-{selectedBooking.id}</span>
             </div>
-            <div className="pass-row">
-              <strong>Event:</strong> <span>{selectedBooking.eventTitle}</span>
+            <div className="pass-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <strong style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>Event:</strong> 
+              <span style={{ fontSize: '13px', fontWeight: 600, textAlign: 'right' }}>{selectedBooking.eventTitle}</span>
             </div>
-            <div className="pass-row">
-              <strong>Status:</strong> <span className={`badge badge-${selectedBooking.status?.toLowerCase()}`}>{selectedBooking.status}</span>
+            <div className="pass-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <strong style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>Status:</strong> 
+              <span className={`badge badge-${selectedBooking.status?.toLowerCase()}`}>{selectedBooking.status}</span>
             </div>
+            
             <div className="pass-tickets" style={{ marginTop: '16px', padding: '12px', background: '#f9fafb', borderRadius: '8px' }}>
-              <h6 style={{ marginBottom: '8px' }}>Tickets:</h6>
+              <h6 style={{ marginBottom: '8px', fontSize: '12px', textTransform: 'uppercase', color: 'var(--neutral-400)' }}>Your Tickets:</h6>
               {selectedBooking.items?.map(item => (
-                <div key={item.id} className="pass-ticket-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                <div key={item.id} className="pass-ticket-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '14px' }}>
                   <span>{item.ticketName}</span>
                   <strong>x {item.quantity}</strong>
                 </div>
@@ -246,7 +312,7 @@ export default function MyRegistrations() {
               {!eventForCancel?.isCancellable ? (
                 <p>This event is non-cancellable according to the organizer&apos;s policy.</p>
               ) : (
-                <p>The cancellation deadline for this event (<strong>{new Date(eventForCancel?.cancellationDeadline).toLocaleString()}</strong>) has already passed.</p>
+                <p>The cancellation deadline for this event (<strong>{formatDateTime(eventForCancel?.cancellationDeadline)}</strong>) has already passed.</p>
               )}
             </div>
           )}

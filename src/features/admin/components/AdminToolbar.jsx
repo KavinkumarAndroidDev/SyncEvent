@@ -8,6 +8,9 @@ export default function AdminToolbar({
   sortOptions,
   actionLabel,
   onAction,
+  pageSize,
+  onPageSizeChange,
+  onExport,
 }) {
   return (
     <div style={{ marginBottom: 24 }}>
@@ -16,9 +19,14 @@ export default function AdminToolbar({
           <h2 className="view-title">{title}</h2>
           <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>{description}</p>
         </div>
-        <button className="btn-primary" onClick={onAction} style={{ minWidth: 140 }}>
-          {actionLabel}
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {onExport && <button className="btn-outline-sm" onClick={onExport} style={{ minWidth: 110 }}>Export</button>}
+          {actionLabel && (
+            <button className="btn-primary" onClick={onAction} style={{ minWidth: 140 }}>
+              {actionLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 20 }}>
@@ -36,6 +44,14 @@ export default function AdminToolbar({
             </option>
           ))}
         </select>
+        {onPageSizeChange && (
+          <select className="form-input" value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))} style={{ width: 150 }}>
+            <option value={5}>5 per page</option>
+            <option value={10}>10 per page</option>
+            <option value={20}>20 per page</option>
+            <option value={50}>50 per page</option>
+          </select>
+        )}
       </div>
     </div>
   );

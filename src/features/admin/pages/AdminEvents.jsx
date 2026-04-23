@@ -4,83 +4,66 @@ import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
-import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import Spinner from '../../../components/common/Spinner';
 
-const STATUS_LABELS = {
-  PENDING_APPROVAL: 'Pending Approval',
-  APPROVED: 'Approved',
-  REJECTED: 'Rejected',
-  PUBLISHED: 'Published',
-  CANCELLED: 'Cancelled',
-};
-
-export default function AdminEventApprovals() {
+export default function AdminEvents() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('PENDING_APPROVAL');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('PUBLISHED');
+  const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success');
+  const [pageSize, setPageSize] = useState(10);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedTickets, setSelectedTickets] = useState([]);
-  const [pageSize, setPageSize] = useState(10);
-  const [confirm, setConfirm] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState({ total: 0, published: 0, pending: 0, cancelled: 0 });
 
   const loadEvents = useCallback(async () => {
     try {
       setLoading(true);
-      const query = `/events?status=${statusFilter}&size=200&sort=startTime,asc`;
-      const res = await axiosInstance.get(query);
-      setEvents((res.data.content || []).map((item) => ({ ...item, status: item.status || statusFilter })));
+      const res = await axiosInstance.get('/events?size=200');
+      const data = res.data.content || [];
+      setEvents(data);
+
+      const total = data.length;
+      const published = data.filter(e => e.status === 'PUBLISHED').length;
+      const pending = data.filter(e => e.status === 'PENDING_APPROVAL').length;
+      const cancelled = data.filter(e => e.status === 'CANCELLED').length;
+      setStats({ total, published, pending, cancelled });
     } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load events.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((item) => {
+    let result = events.filter((item) => {
       const text = `${item.title || ''} ${item.categoryName || ''} ${item.venueName || ''} ${item.city || ''}`.toLowerCase();
-      return text.includes(search.toLowerCase());
+      const matchesSearch = text.includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
+      return matchesSearch && matchesStatus;
     });
-  }, [events, search]);
+
+    if (sortBy === 'newest') result.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    if (sortBy === 'oldest') result.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    if (sortBy === 'title-asc') result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    if (sortBy === 'title-desc') result.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+    if (sortBy === 'status') {
+      const priority = { 'PENDING_APPROVAL': 1, 'APPROVED': 2, 'PUBLISHED': 3, 'DRAFT': 4, 'CANCELLED': 5, 'COMPLETED': 6, 'REJECTED': 7 };
+      result.sort((a, b) => (priority[a.status] || 99) - (priority[b.status] || 99));
+    }
+
+    return result;
+  }, [events, search, statusFilter, sortBy]);
 
   const totalPages = Math.ceil(filteredEvents.length / pageSize);
   const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
-
-  async function updateStatus(eventId, status) {
-    try {
-      setSaving(true);
-      await axiosInstance.patch(`/events/${eventId}/status`, { status });
-      setMessageType('success');
-      setMessage(`Event marked as ${status}.`);
-      await loadEvents();
-      setSelectedEvent(null);
-      setConfirm(null);
-    } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Could not update event status.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function askStatus(item, status) {
-    setConfirm({
-      title: 'Update Event Status',
-      message: `Are you sure you want to mark "${item.title}" as ${status}?`,
-      onConfirm: () => updateStatus(item.id || item.eventId, status),
-    });
-  }
 
   async function openEvent(id) {
     try {
@@ -88,16 +71,15 @@ export default function AdminEventApprovals() {
         axiosInstance.get(`/events/${id}`),
         axiosInstance.get(`/events/${id}/tickets`).catch(() => ({ data: [] })),
       ]);
-      setSelectedEvent({ ...res.data, status: res.data.status || statusFilter });
+      setSelectedEvent(res.data);
       setSelectedTickets(ticketRes.data || []);
     } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Could not load event details.');
+      alert('Could not load event details.');
     }
   }
 
-  function exportEvents() {
-    exportCsv('event-approvals.csv', ['ID', 'Title', 'Category', 'Venue', 'City', 'Start', 'Status'], filteredEvents.map((item) => [
+  function exportEventsList() {
+    exportCsv('all-events.csv', ['ID', 'Title', 'Category', 'Venue', 'City', 'Start', 'Status'], filteredEvents.map((item) => [
       item.id,
       item.title,
       item.categoryName,
@@ -108,14 +90,33 @@ export default function AdminEventApprovals() {
     ]));
   }
 
+  if (loading) return <Spinner label="Loading events..." />;
+
   return (
     <div style={{ padding: 40 }}>
       <div className="view-header">
-        <h2 className="view-title">Event Approvals</h2>
-        <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Review submitted events and update their approval state.</p>
+        <h2 className="view-title">All Events</h2>
+        <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage and view all events across the platform.</p>
       </div>
 
-      {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`}>{message}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
+          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Total Events</div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--neutral-900)' }}>{stats.total}</div>
+        </div>
+        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
+          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Published</div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)' }}>{stats.published}</div>
+        </div>
+        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
+          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Pending Approval</div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#eab308' }}>{stats.pending}</div>
+        </div>
+        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
+          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Cancelled</div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#ef4444' }}>{stats.cancelled}</div>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
         <input
@@ -128,18 +129,28 @@ export default function AdminEventApprovals() {
             setPage(0);
           }}
         />
-        <select className="form-input" style={{ width: 220 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-          {Object.keys(STATUS_LABELS).map((status) => (
-            <option key={status} value={status}>{STATUS_LABELS[status]}</option>
-          ))}
+        <select className="form-input" style={{ width: 150 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+          <option value="ALL">All Statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="PENDING_APPROVAL">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="PUBLISHED">Published</option>
+          <option value="CANCELLED">Cancelled</option>
+          <option value="COMPLETED">Completed</option>
         </select>
-        <select className="form-input" style={{ width: 150 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
-          <option value={5}>5 per page</option>
-          <option value={10}>10 per page</option>
-          <option value={20}>20 per page</option>
-          <option value={50}>50 per page</option>
+        <select className="form-input" style={{ width: 160 }} value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(0); }}>
+          <option value="newest">Sort by Date (Newest)</option>
+          <option value="oldest">Sort by Date (Oldest)</option>
+          <option value="title-asc">Sort by Title (A-Z)</option>
+          <option value="title-desc">Sort by Title (Z-A)</option>
+          <option value="status">Sort by Status (Priority)</option>
         </select>
-        <Button variant="secondary" onClick={exportEvents}>Export</Button>
+        <select className="form-input" style={{ width: 130 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <option value={10}>10 / page</option>
+          <option value={20}>20 / page</option>
+          <option value={50}>50 / page</option>
+        </select>
+        <Button variant="secondary" onClick={exportEventsList}>Export</Button>
       </div>
 
       <div className="table-responsive">
@@ -150,40 +161,29 @@ export default function AdminEventApprovals() {
               <th>Event</th>
               <th>Category</th>
               <th>Venue</th>
-              <th>Start</th>
+              <th>Start Date</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {!loading && pagedEvents.map((item, index) => (
+            {pagedEvents.map((item, index) => (
               <tr key={item.id}>
                 <td>{page * pageSize + index + 1}</td>
                 <td style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.title}</td>
                 <td>{item.categoryName || '-'}</td>
                 <td>{item.venueName || '-'}{item.city ? `, ${item.city}` : ''}</td>
                 <td>{formatDateTime(item.startTime)}</td>
+                <td><span className={`badge badge-${item.status?.toLowerCase()}`}>{item.status}</span></td>
                 <td>
-                  <div className="row-actions">
-                    <Button variant="table" onClick={() => openEvent(item.id)}>View</Button>
-                    {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'APPROVED')}>Approve</Button>}
-                    {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'REJECTED')}>Reject</Button>}
-                    {statusFilter === 'APPROVED' && <Button variant="table" onClick={() => askStatus(item, 'PUBLISHED')}>Publish</Button>}
-                    {(statusFilter === 'APPROVED' || statusFilter === 'PUBLISHED') && <Button variant="table" onClick={() => askStatus(item, 'CANCELLED')}>Cancel</Button>}
-                  </div>
+                  <Button variant="table" onClick={() => openEvent(item.id)}>View Details</Button>
                 </td>
               </tr>
             ))}
-            {!loading && pagedEvents.length === 0 && (
+            {pagedEvents.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
-                  No events found for this status.
-                </td>
-              </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
-                  Loading events...
+                <td colSpan="7" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
+                  No events found matching your criteria.
                 </td>
               </tr>
             )}
@@ -235,16 +235,10 @@ export default function AdminEventApprovals() {
               </div>
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Description</h4>
-              <p style={{ margin: '0 0 8px 0', color: 'var(--neutral-600)' }}><strong>Short:</strong> {selectedEvent.description || '-'}</p>
-              <p style={{ margin: 0, color: 'var(--neutral-600)' }}><strong>Full:</strong> {selectedEvent.fullDescription || 'No full description available.'}</p>
-            </div>
-
             <div>
               <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Tickets</h4>
               {selectedTickets.length === 0 ? (
-                <div style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>No ticket details available.</div>
+                <div style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>No tickets available.</div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                   {selectedTickets.map((ticket) => (
@@ -263,12 +257,6 @@ export default function AdminEventApprovals() {
           </div>
         )}
       </Modal>
-      <AdminConfirmModal
-        confirm={confirm}
-        loading={saving}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => confirm?.onConfirm?.()}
-      />
     </div>
   );
 }

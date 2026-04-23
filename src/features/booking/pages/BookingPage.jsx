@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import axiosInstance from '../../../lib/axios';
@@ -14,6 +14,7 @@ import ParticipantDetailsSection from '../components/ParticipantDetailsSection';
 import BookingAlert from '../components/BookingAlert';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
+import { formatMoney } from '../../../utils/formatters';
 import { clearBookingDraft, loadBookingDraft, saveBookingDraft } from '../utils/bookingDraft';
 import {
   MAX_TICKETS_PER_BOOKING,
@@ -552,9 +553,9 @@ export default function BookingPage() {
                   <div key={ticket.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', border: '1px solid var(--neutral-100)', borderRadius: 10 }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 15 }}>{ticket.name}</div>
-                      <div style={{ fontSize: 13, color: 'var(--neutral-400)' }}>Rs. {ticket.price} x {cart[ticket.id]}</div>
+                      <div style={{ fontSize: 13, color: 'var(--neutral-400)' }}>{formatMoney(ticket.price)} x {cart[ticket.id]}</div>
                     </div>
-                    <div style={{ fontWeight: 700 }}>Rs. {Number(ticket.price || 0) * cart[ticket.id]}</div>
+                    <div style={{ fontWeight: 700 }}>{formatMoney(Number(ticket.price || 0) * cart[ticket.id])}</div>
                   </div>
                 ))}
               </div>

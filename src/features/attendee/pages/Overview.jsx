@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axiosInstance from '../../../lib/axios';
 import Button from '../../../components/ui/Button';
+import { formatDate, formatDateTime, formatMoney } from '../../../utils/formatters';
+import Spinner from '../../../components/common/Spinner';
 
 export default function Overview() {
   const [bookings, setBookings] = useState([]);
@@ -35,16 +37,16 @@ export default function Overview() {
     return bookings
       .filter(b => b.status === 'CONFIRMED' && b.eventStartTime && new Date(b.eventStartTime) >= today)
       .sort((a, b) => new Date(a.eventStartTime) - new Date(b.eventStartTime))
-      .slice(0, 10);
+      .slice(0, 5);
   }, [bookings]);
 
-  if (loading) return <div className="p-4">Loading dashboard...</div>;
+  if (loading) return <Spinner label="Loading dashboard..." />;
 
   return (
     <div className="view-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       <header className="view-header" style={{ marginBottom: '40px' }}>
-        <h2 className="view-title" style={{ fontSize: '28px', marginBottom: '8px' }}>Dashboard Overview</h2>
-        <p style={{ color: 'var(--neutral-400)', fontSize: '15px' }}>Welcome back. Manage your event activity and upcoming schedules here.</p>
+        <h2 className="view-title" style={{ fontSize: '28px', marginBottom: '8px' }}>Welcome back!</h2>
+        <p style={{ color: 'var(--neutral-400)', fontSize: '15px' }}>Manage your event activity and upcoming schedules here.</p>
       </header>
 
       <div className="overview-grid">
@@ -58,10 +60,16 @@ export default function Overview() {
           </div>
           <div className="card-body">
             {upcomingEvents.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '80px 0' }}>
-                <p style={{ color: 'var(--neutral-400)', marginBottom: '24px', fontSize: '15px' }}>You have no upcoming confirmed events at the moment.</p>
+              <div style={{ textAlign: 'center', padding: '64px 20px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--neutral-50)', display: 'flex', alignItems: 'center', justify_content: 'center', margin: '0 auto 16px' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--neutral-400)' }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </div>
+                <h4 style={{ fontFamily: 'DM Sans', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No upcoming events confirmed</h4>
+                <p style={{ color: 'var(--neutral-400)', marginBottom: '24px', fontSize: '14px', maxWidth: '320px', margin: '0 auto 24px' }}>
+                  Looks like you haven't booked any upcoming events. Discover amazing experiences and start your journey!
+                </p>
                 <Link to="/events" style={{ textDecoration: 'none' }}>
-                   <Button>Discover New Events</Button>
+                   <Button>Discover Events</Button>
                 </Link>
               </div>
             ) : (
@@ -73,7 +81,7 @@ export default function Overview() {
                   const evDay = new Date(eventDate); evDay.setHours(0,0,0,0);
                   const dayLabel = evDay.getTime() === today.getTime() ? 'Today' :
                                    evDay.getTime() === tomorrow.getTime() ? 'Tomorrow' :
-                                   eventDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                                   formatDate(eventDate);
                   const timeLabel = eventDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
                   return (
                   <li key={b.id} className="list-item" style={{ padding: '20px 0' }}>
@@ -85,7 +93,7 @@ export default function Overview() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <span className="badge badge-confirmed" style={{ padding: '6px 12px' }}>Confirmed</span>
-                        <Link to={`/events/${b.eventId}`}>
+                        <Link to="/dashboard/registrations">
                             <Button variant="table">Details</Button>
                         </Link>
                     </div>
@@ -107,22 +115,28 @@ export default function Overview() {
           </div>
           <div className="card-body">
             {payments.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '80px 0' }}>
-                <p style={{ color: 'var(--neutral-400)', fontSize: '15px' }}>Your recent payment activity will appear here.</p>
+              <div style={{ textAlign: 'center', padding: '64px 20px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--neutral-50)', display: 'flex', alignItems: 'center', justify_content: 'center', margin: '0 auto 16px' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--neutral-400)' }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <h4 style={{ fontFamily: 'DM Sans', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No transactions found</h4>
+                <p style={{ color: 'var(--neutral-400)', fontSize: '14px', maxWidth: '320px', margin: '0 auto' }}>
+                  Your recent payment activity and history will appear here once you make a booking.
+                </p>
               </div>
             ) : (
               <ul className="overview-list">
-                {payments.slice(0, 10).map(p => (
+                {payments.slice(0, 5).map(p => (
                   <li key={p.id} className="list-item" style={{ padding: '20px 0' }}>
                     <div className="item-main">
-                      <p className="item-title" style={{ fontSize: '15px', marginBottom: '4px' }}>Payment · {new Date(p.createdAt).toLocaleDateString()}</p>
+                      <p className="item-title" style={{ fontSize: '15px', marginBottom: '4px' }}>Payment · {formatDate(p.createdAt)}</p>
                       <p className="item-sub" style={{ fontSize: '13px' }}>
-                        {new Date(p.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} via {p.paymentMode || 'Gateway'}
+                        {formatDateTime(p.createdAt)} via {p.paymentMode || 'Gateway'}
                       </p>
                     </div>
                     <div className="item-side">
                       <p className="item-amount" style={{ fontSize: '16px', color: p.status === 'FAILED' ? 'var(--error)' : 'var(--primary)', marginBottom: '4px' }}>
-                        ₹{p.amount.toLocaleString()}
+                        {formatMoney(p.amount)}
                       </p>
                       <span className={`badge badge-${p.status?.toLowerCase()}`} style={{ fontSize: '10px' }}>{p.status}</span>
                     </div>

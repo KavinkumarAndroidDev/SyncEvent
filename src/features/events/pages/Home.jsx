@@ -91,6 +91,7 @@ export default function Home() {
   const dispatch = useDispatch();
   const { list, loading, error } = useSelector((s) => s.events);
   const { categories } = useSelector((s) => s.metadata);
+  const { user } = useSelector((s) => s.auth);
 
   useEffect(() => {
     dispatch(fetchEvents({ size: 10, sort: 'startTime,asc' }));
@@ -114,7 +115,7 @@ export default function Home() {
           <p className="hero-sub">Music, workshops, sports, food and more — all in one place.</p>
           <div className="hero-actions">
             <Link to="/events" className="btn-hero">Explore Events</Link>
-            <Link to="/register/organizer" className="btn-hero-outline">Become an Organizer</Link>
+            {!user && <Link to="/register/organizer" className="btn-hero-outline">Become an Organizer</Link>}
           </div>
         </div>
         <div className="hero-img-wrap">
@@ -173,15 +174,17 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="cta-strip">
-        <div className="cta-inner">
-          <div className="cta-left">
-            <div className="cta-title">List your Show</div>
-            <p className="cta-sub">Got a show, event, or activity? Partner with us &amp; get listed on SyncEvent.</p>
+      {!user && (
+        <section className="cta-strip">
+          <div className="cta-inner">
+            <div className="cta-left">
+              <div className="cta-title">List your Show</div>
+              <p className="cta-sub">Got a show, event, or activity? Partner with us &amp; get listed on SyncEvent.</p>
+            </div>
+            <Link to="/register/organizer" className="cta-btn">Register as Organizer</Link>
           </div>
-          <Link to="/register/organizer" className="cta-btn">Register as Organizer</Link>
-        </div>
-      </section>
+        </section>
+      )}
     </main>
   );
 }

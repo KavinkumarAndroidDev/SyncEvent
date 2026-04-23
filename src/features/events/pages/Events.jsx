@@ -20,7 +20,7 @@ export default function Events() {
   const [filters, setFilters] = useState({
     categoryId: queryCategoryId,
     city: searchParams.get('city') || '',
-    venueId: '',
+    venueId: searchParams.get('venueId') || '',
     sort: 'startTime,asc'
   });
 
@@ -37,6 +37,15 @@ export default function Events() {
     dispatch(fetchEvents(params));
   }, [dispatch, page, search, filters, queryCategoryId]);
 
+  useEffect(() => {
+    const nextParams = {};
+    if (search.trim()) nextParams.q = search.trim();
+    if (filters.categoryId) nextParams.categoryId = filters.categoryId;
+    if (filters.city) nextParams.city = filters.city;
+    if (filters.venueId) nextParams.venueId = filters.venueId;
+    setSearchParams(nextParams, { replace: true });
+  }, [search, filters.categoryId, filters.city, filters.venueId, setSearchParams]);
+
   return (
     <main>
       <div className="events-page-header">
@@ -45,7 +54,7 @@ export default function Events() {
           <SearchBar onSearch={(val) => {
             setPage(0);
             setSearch(val);
-          }} defaultValue={search} />
+          }} value={search} />
         </div>
       </div>
 

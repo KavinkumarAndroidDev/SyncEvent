@@ -10,7 +10,7 @@ import BookingPage from '../features/booking/pages/BookingPage';
 import About from '../features/public/pages/About';
 import Contact from '../features/public/pages/Contact';
 import NotFound from '../features/public/pages/NotFound';
-import { AuthLoader, GuestRoute, ProtectedRoute } from './routeGuards';
+import { AuthLoader, GuestRoute, ProtectedRoute, PublicRoute } from './routeGuards';
 
 // Attendee Dashboard
 import AttendeeDashboard from '../features/attendee/layouts/AttendeeDashboard';
@@ -31,10 +31,14 @@ import AdminEventApprovals from '../features/admin/pages/AdminEventApprovals';
 import AdminTicketsRegistrations from '../features/admin/pages/AdminTicketsRegistrations';
 import AdminPayments from '../features/admin/pages/AdminPayments';
 import AdminNotifications from '../features/admin/pages/AdminNotifications';
+import AdminOffers from '../features/admin/pages/AdminOffers';
+import AdminReports from '../features/admin/pages/AdminReports';
+import AdminEvents from '../features/admin/pages/AdminEvents';
 
 // Organizer Dashboard
 import OrganizerDashboard from '../features/organizer/layouts/OrganizerDashboard';
 import OrganizerOverview from '../features/organizer/pages/OrganizerOverview';
+import OrganizerReviews from '../features/organizer/pages/OrganizerReviews';
 
 // Placeholder
 import DashboardPlaceholder from '../components/common/DashboardPlaceholder';
@@ -47,11 +51,16 @@ const router = createBrowserRouter([
       {
         element: <AuthLoader />,
         children: [
-          { index: true, element: <Home /> },
-          { path: 'events', element: <Events /> },
-          { path: 'events/:id', element: <EventDetail /> },
-          { path: 'about', element: <About /> },
-          { path: 'contact', element: <Contact /> },
+          {
+            element: <PublicRoute />,
+            children: [
+              { index: true, element: <Home /> },
+              { path: 'events', element: <Events /> },
+              { path: 'events/:id', element: <EventDetail /> },
+              { path: 'about', element: <About /> },
+              { path: 'contact', element: <Contact /> },
+            ]
+          },
           { path: 'register/organizer', element: <RegisterOrganizer /> },
 
 
@@ -86,16 +95,15 @@ const router = createBrowserRouter([
                   { path: 'users', element: <AdminUsers /> },
                   { path: 'organizer-approvals', element: <AdminOrganizerApprovals /> },
                   { path: 'event-approvals', element: <AdminEventApprovals /> },
-                  { path: 'events', element: <DashboardPlaceholder title="Events" /> },
-                  { path: 'offers', element: <DashboardPlaceholder title="Offers" /> },
+                  { path: 'events', element: <AdminEvents /> },
+                  { path: 'offers', element: <AdminOffers /> },
                   { path: 'categories', element: <AdminCategories /> },
                   { path: 'venues', element: <AdminVenues /> },
-                  { path: 'tickets',element: <DashboardPlaceholder title="Tickets and registrations" />  },
+                  { path: 'tickets', element: <AdminTicketsRegistrations /> },
                   { path: 'payments', element: <AdminPayments /> },
-                  { path: 'reports', element: <DashboardPlaceholder title="Reports & Analytics" /> },
-                  { path: 'feedback', element: <DashboardPlaceholder title="Feedback Moderation" /> },
+                  { path: 'reports', element: <AdminReports /> },
                   { path: 'notifications', element: <AdminNotifications /> },
-                  { path: 'profile', element: <DashboardPlaceholder title="Admin Profile" /> },
+                  { path: 'profile', element: <Profile /> },
                 ],
               },
             ],
@@ -117,6 +125,7 @@ const router = createBrowserRouter([
                   { path: 'payments', element: <DashboardPlaceholder title="Payments" /> },
                   { path: 'reports', element: <DashboardPlaceholder title="Reports" /> },
                   { path: 'notifications', element: <DashboardPlaceholder title="Notifications" /> },
+                  { path: 'reviews', element: <OrganizerReviews /> },
                   { path: 'profile', element: <DashboardPlaceholder title="Organizer Profile" /> },
                 ],
               },
@@ -131,11 +140,11 @@ const router = createBrowserRouter([
               { path: 'register', element: <Register /> },
             ],
           },
-          { path: '*', element: <NotFound /> }
         ],
       },
     ],
   },
+  { path: '*', element: <NotFound /> },
 ]);
 
 export default router;

@@ -15,35 +15,36 @@ export default function Register() {
 
   useEffect(() => {
     return () => dispatch(clearError());
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     if (registerSuccess) {
       dispatch(clearRegisterSuccess());
       navigate('/login');
     }
-  }, [registerSuccess]);
+  }, [dispatch, navigate, registerSuccess]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
+    const nextForm = { ...form, [e.target.name]: e.target.value };
+    setForm(nextForm);
+    setErrors(validate(nextForm));
     if (error) dispatch(clearError());
   };
 
-  const validate = () => {
+  const validate = (values = form) => {
     const errs = {};
-    if (!form.fullName.trim()) errs.fullName = 'Full name is required';
-    else if (form.fullName.trim().length < 3) errs.fullName = 'Name must be at least 3 characters';
+    if (!values.fullName.trim()) errs.fullName = 'Full name is required';
+    else if (values.fullName.trim().length < 3) errs.fullName = 'Name must be at least 3 characters';
 
-    if (!form.email.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email';
+    if (!values.email.trim()) errs.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(values.email)) errs.email = 'Enter a valid email';
 
     const strongPwd = /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/;
-    if (!form.password) errs.password = 'Password is required';
-    else if (!strongPwd.test(form.password))
+    if (!values.password) errs.password = 'Password is required';
+    else if (!strongPwd.test(values.password))
       errs.password = 'Min 8 chars with uppercase, lowercase, number and special character';
 
-    if (form.phone && !/^[0-9]{10}$/.test(form.phone))
+    if (values.phone && !/^[0-9]{10}$/.test(values.phone))
       errs.phone = 'Phone must be 10 digits';
 
     return errs;
@@ -72,7 +73,8 @@ export default function Register() {
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
           <div className="form-row">
             <Input
-              label="Full Name *"
+              label="Full Name"
+              required
               name="fullName"
               placeholder="John Doe"
               value={form.fullName}
@@ -80,7 +82,8 @@ export default function Register() {
               error={errors.fullName}
             />
             <Input
-              label="Email *"
+              label="Email"
+              required
               type="email"
               name="email"
               placeholder="you@example.com"
@@ -91,7 +94,8 @@ export default function Register() {
           </div>
 
           <Input
-            label="Password *"
+            label="Password"
+            required
             type="password"
             name="password"
             placeholder="Min 8 chars, uppercase, number, symbol"
@@ -125,9 +129,6 @@ export default function Register() {
 
         <p className="auth-switch">
           Already have an account? <Link to="/login">Login</Link>
-        </p>
-        <p className="auth-switch" style={{ marginTop: 4 }}>
-          Want to host events? <Link to="/register/organizer">Register as Organizer</Link>
         </p>
       </div>
     </div>

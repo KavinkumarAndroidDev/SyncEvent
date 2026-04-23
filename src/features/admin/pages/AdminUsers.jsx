@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import axiosInstance from '../../../lib/axios';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
-
-const PAGE_SIZE = 8;
+import { formatDate } from '../../../utils/formatters';
+import AdminConfirmModal from '../components/AdminConfirmModal';
+import { exportCsv } from '../utils/adminUtils';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -12,6 +13,9 @@ export default function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [confirm, setConfirm] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
 
@@ -42,19 +46,42 @@ export default function AdminUsers() {
     });
   }, [users, search, roleFilter, statusFilter]);
 
-  const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE);
-  const pagedUsers = filteredUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredUsers.length / pageSize);
+  const pagedUsers = filteredUsers.slice(page * pageSize, (page + 1) * pageSize);
 
   async function updateStatus(userId, status) {
     try {
+      setSaving(true);
       await axiosInstance.patch(`/users/${userId}/status`, { status });
       setMessageType('success');
       setMessage(`User status changed to ${status}.`);
+      setConfirm(null);
       await loadUsers();
     } catch (err) {
       setMessageType('error');
       setMessage(err.response?.data?.message || 'Could not update user status.');
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function askStatus(item, status) {
+    setConfirm({
+      title: 'Update User Status',
+      message: `Are you sure you want to mark ${item.fullName || item.email} as ${status}?`,
+      onConfirm: () => updateStatus(item.id, status),
+    });
+  }
+
+  function exportUsers() {
+    exportCsv('users.csv', ['ID', 'Name', 'Email', 'Role', 'Status', 'Joined'], filteredUsers.map((item) => [
+      item.id,
+      item.fullName,
+      item.email,
+      item.role,
+      item.status,
+      item.createdAt,
+    ]));
   }
 
   return (
@@ -89,6 +116,13 @@ export default function AdminUsers() {
           <option value="INACTIVE">Inactive</option>
           <option value="SUSPENDED">Suspended</option>
         </select>
+        <select className="form-input" style={{ width: 150 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <option value={5}>5 per page</option>
+          <option value={10}>10 per page</option>
+          <option value={20}>20 per page</option>
+          <option value={50}>50 per page</option>
+        </select>
+        <Button variant="secondary" onClick={exportUsers}>Export</Button>
       </div>
 
       <div className="table-responsive">
@@ -106,19 +140,19 @@ export default function AdminUsers() {
           <tbody>
             {!loading && pagedUsers.map((item, index) => (
               <tr key={item.id}>
-                <td>{page * PAGE_SIZE + index + 1}</td>
+                <td>{page * pageSize + index + 1}</td>
                 <td>
                   <div style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.fullName}</div>
                   <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{item.email}</div>
                 </td>
                 <td>{item.role}</td>
                 <td><span className={`badge badge-${String(item.status || '').toLowerCase()}`}>{item.status}</span></td>
-                <td>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '-'}</td>
+                <td>{formatDate(item.createdAt)}</td>
                 <td>
                   <div className="row-actions">
-                    {item.status !== 'ACTIVE' && <Button variant="table" onClick={() => updateStatus(item.id, 'ACTIVE')}>Activate</Button>}
-                    {item.status !== 'SUSPENDED' && <Button variant="table" onClick={() => updateStatus(item.id, 'SUSPENDED')}>Suspend</Button>}
-                    {item.status !== 'INACTIVE' && <Button variant="table" onClick={() => updateStatus(item.id, 'INACTIVE')}>Disable</Button>}
+                    {item.status !== 'ACTIVE' && <Button variant="table" onClick={() => askStatus(item, 'ACTIVE')}>Activate</Button>}
+                    {item.status !== 'SUSPENDED' && <Button variant="table" onClick={() => askStatus(item, 'SUSPENDED')}>Suspend</Button>}
+                    {item.status !== 'INACTIVE' && <Button variant="table" onClick={() => askStatus(item, 'INACTIVE')}>Disable</Button>}
                   </div>
                 </td>
               </tr>
@@ -142,6 +176,12 @@ export default function AdminUsers() {
       </div>
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <AdminConfirmModal
+        confirm={confirm}
+        loading={saving}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
+      />
     </div>
   );
 }

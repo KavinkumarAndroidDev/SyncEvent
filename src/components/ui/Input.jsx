@@ -7,7 +7,11 @@ export default function Input({ label, error, type, ...props }) {
 
   return (
     <div className="form-group">
-      {label && <label className="form-label">{label}</label>}
+      {label && (
+        <label className="form-label">
+          {label}{props.required && <span style={{ color: '#dc2626' }}> *</span>}
+        </label>
+      )}
       <div className={isPassword ? 'password-input-wrap' : ''}>
         <input className={`form-input${error ? ' input-error' : ''}`} type={inputType} {...props} />
         {isPassword && (

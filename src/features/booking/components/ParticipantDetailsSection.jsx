@@ -40,7 +40,7 @@ export default function ParticipantDetailsSection({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="form-group">
-                <label className="form-label">Full Name</label>
+                <label className="form-label">Full Name <span style={{ color: 'var(--error)' }}>*</span></label>
                 <input
                   className="form-input"
                   type="text"
@@ -51,7 +51,7 @@ export default function ParticipantDetailsSection({
               </div>
 
               <div className="form-group">
-                <label className="form-label">Email</label>
+                <label className="form-label">Email <span style={{ color: 'var(--error)' }}>*</span></label>
                 <input
                   className="form-input"
                   type="email"
@@ -62,7 +62,7 @@ export default function ParticipantDetailsSection({
               </div>
 
               <div className="form-group">
-                <label className="form-label">Phone</label>
+                <label className="form-label">Phone <span style={{ color: 'var(--error)' }}>*</span></label>
                 <input
                   className="form-input"
                   type="text"
@@ -73,7 +73,7 @@ export default function ParticipantDetailsSection({
               </div>
 
               <div className="form-group">
-                <label className="form-label">Gender</label>
+                <label className="form-label">Gender <span style={{ color: 'var(--error)' }}>*</span></label>
                 <select
                   className="form-input"
                   value={participant.gender}
