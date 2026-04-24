@@ -36,7 +36,7 @@ export default function AdminNotifications() {
       setItems(res.data.content || []);
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load notification history.');
+      setMessage('Failed to load history.');
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ export default function AdminNotifications() {
   async function sendBroadcast() {
     if (!form.title.trim() || !form.message.trim()) {
       setMessageType('error');
-      setMessage('Title and message are required.');
+      setMessage('Mandatory fields missing.');
       return;
     }
 
@@ -105,128 +105,80 @@ export default function AdminNotifications() {
         targetRole: form.targetRole || null,
       });
       setMessageType('success');
-      setMessage('Broadcast sent successfully.');
+      setMessage('Broadcast sent.');
       setForm(EMPTY_FORM);
       setShowModal(false);
       setConfirm(null);
       await loadHistory();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Could not send broadcast.');
+      setMessage(err.response?.data?.message || 'Dispatch failed.');
     } finally {
       setSaving(false);
     }
   }
 
   function askSendBroadcast() {
-    if (!form.title.trim() || !form.message.trim()) {
-      setMessageType('error');
-      setMessage('Title and message are required.');
-      return;
-    }
+    if (!form.title.trim() || !form.message.trim()) return;
     setConfirm({
-      title: 'Send Broadcast',
-      message: `Send this broadcast to ${form.targetRole || 'all users'}?`,
+      title: 'Confirm Broadcast',
+      message: `Dispatching to ${form.targetRole || 'all platform users'}. Are you sure?`,
       onConfirm: sendBroadcast,
     });
   }
 
-  function exportNotifications() {
-    exportCsv('notifications.csv', ['ID', 'Title', 'Message', 'Target', 'Recipients', 'Sent By', 'Created'], filteredItems.map((item) => [
-      item.id,
-      item.title,
-      item.message,
-      item.targetRole || 'ALL',
-      item.recipientCount,
-      item.sentByName,
-      item.createdAt,
-    ]));
-  }
-
   return (
     <div style={{ padding: 40 }}>
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '24px' }}>
+      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
-          <h2 className="view-title">Notifications Center</h2>
-          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage broadcasts and view your personal alerts.</p>
+          <h2 className="view-title">Notifications</h2>
+          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage system-wide broadcasts and personal alerts.</p>
         </div>
-        {activeTab === 'broadcast' ? (
-          <Button onClick={() => setShowModal(true)}>New Broadcast</Button>
-        ) : (
-          <Button variant="secondary" onClick={markAllRead}>Mark All as Read</Button>
-        )}
+        <div style={{ display: 'flex', gap: 12 }}>
+          {activeTab === 'broadcast' && <Button onClick={() => setShowModal(true)}>New Notification</Button>}
+          {activeTab === 'inbox' && <Button variant="secondary" onClick={markAllRead}>Clear Inbox</Button>}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--neutral-100)', marginBottom: '24px' }}>
-        <button 
-          onClick={() => setActiveTab('broadcast')}
-          style={{ 
-            padding: '12px 24px', 
-            border: 'none', 
-            background: 'none', 
-            borderBottom: activeTab === 'broadcast' ? '2px solid var(--primary)' : 'none',
-            color: activeTab === 'broadcast' ? 'var(--primary)' : 'var(--neutral-400)',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          Broadcast Tools
-        </button>
-        <button 
-          onClick={() => setActiveTab('inbox')}
-          style={{ 
-            padding: '12px 24px', 
-            border: 'none', 
-            background: 'none', 
-            borderBottom: activeTab === 'inbox' ? '2px solid var(--primary)' : 'none',
-            color: activeTab === 'inbox' ? 'var(--primary)' : 'var(--neutral-400)',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          My Inbox {personalNotifications.filter(n => !n.read).length > 0 && <span style={{ marginLeft: '8px', background: 'var(--primary)', color: 'white', padding: '2px 6px', borderRadius: '10px', fontSize: '10px' }}>{personalNotifications.filter(n => !n.read).length}</span>}
-        </button>
+      <div style={{ display: 'flex', gap: 32, borderBottom: '1px solid var(--neutral-100)', marginBottom: 28 }}>
+        <button onClick={() => setActiveTab('broadcast')} style={{ padding: '12px 0', border: 'none', background: 'none', borderBottom: activeTab === 'broadcast' ? '2px solid var(--primary)' : 'none', color: activeTab === 'broadcast' ? 'var(--primary)' : 'var(--neutral-400)', fontWeight: 600, cursor: 'pointer' }}>Sent Broadcasts</button>
+        <button onClick={() => setActiveTab('inbox')} style={{ padding: '12px 0', border: 'none', background: 'none', borderBottom: activeTab === 'inbox' ? '2px solid var(--primary)' : 'none', color: activeTab === 'inbox' ? 'var(--primary)' : 'var(--neutral-400)', fontWeight: 600, cursor: 'pointer' }}>My Inbox</button>
       </div>
 
       {activeTab === 'broadcast' ? (
         <>
-          {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`}>{message}</div>}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-            <input
-              className="form-input"
-              style={{ flex: 1, minWidth: 220 }}
-              placeholder="Search broadcast history..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-            />
-            <Button variant="secondary" onClick={exportNotifications}>Export</Button>
+            <input className="form-input" style={{ flex: 1, minWidth: 220 }} placeholder="Search broadcasts..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
+            <div className="admin-stat-card">
+              <div className="admin-stat-label">Total Broadcasts</div>
+              <div className="admin-stat-value">{items.length}</div>
+            </div>
+            <div className="admin-stat-card">
+              <div className="admin-stat-label">Total Recipients</div>
+              <div className="admin-stat-value">{items.reduce((acc, curr) => acc + (curr.recipientCount || 0), 0)}</div>
+            </div>
           </div>
 
           <div className="table-responsive">
             <table className="dashboard-table">
               <thead>
                 <tr>
-                  <th>#</th>
                   <th>Title</th>
-                  <th>Target</th>
                   <th>Recipients</th>
-                  <th>Created</th>
+                  <th>Sent At</th>
                 </tr>
               </thead>
               <tbody>
-                {!loading && pagedItems.map((item, index) => (
+                {pagedItems.map((item) => (
                   <tr key={item.id}>
-                    <td>{page * pageSize + index + 1}</td>
                     <td>
-                      <div style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.title}</div>
-                      <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4, maxWidth: 320 }}>{item.message}</div>
+                      <div style={{ fontWeight: 600 }}>{item.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--neutral-400)', maxWidth: 400 }}>{item.message}</div>
                     </td>
-                    <td>{item.targetRole || 'ALL'}</td>
-                    <td>{item.recipientCount || 0}</td>
-                    <td>{formatDateTime(item.createdAt)}</td>
+                    <td><span className="badge badge-table">{item.targetRole || 'GLOBAL'}</span></td>
+                    <td style={{ fontSize: 13 }}>{formatDateTime(item.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -235,82 +187,57 @@ export default function AdminNotifications() {
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </>
       ) : (
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--neutral-100)', overflow: 'hidden' }}>
-          {personalLoading ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--neutral-400)' }}>Loading inbox...</div>
-          ) : personalNotifications.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center' }}>
-              <p style={{ color: 'var(--neutral-400)' }}>Your inbox is empty.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {personalNotifications.map(n => (
-                <div 
-                  key={n.id} 
-                  style={{ 
-                    padding: '20px', 
-                    borderBottom: '1px solid var(--neutral-50)', 
-                    background: n.read ? 'transparent' : 'rgba(59, 130, 246, 0.03)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start'
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                      <h4 style={{ margin: 0, fontSize: '15px', color: n.read ? 'var(--neutral-600)' : 'var(--neutral-900)' }}>{n.title}</h4>
-                      {!n.read && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></span>}
-                    </div>
-                    <p style={{ margin: '4px 0', fontSize: '14px', color: 'var(--neutral-500)', lineHeight: '1.5' }}>{n.message}</p>
-                    <span style={{ fontSize: '12px', color: 'var(--neutral-400)' }}>{formatDateTime(n.createdAt)}</span>
-                  </div>
-                  {!n.read && (
-                    <Button variant="table" onClick={() => markRead(n.id)}>Mark as Read</Button>
-                  )}
+        <div style={{ display: 'grid', gap: 12 }}>
+          {personalNotifications.map(n => (
+            <div key={n.id} style={{ padding: 20, background: n.read ? 'var(--white)' : 'var(--neutral-50)', border: '1px solid var(--neutral-100)', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h4 style={{ margin: 0, fontSize: 15 }}>{n.title}</h4>
+                  {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' }}></span>}
                 </div>
-              ))}
+                <p style={{ margin: '4px 0', fontSize: 14, color: 'var(--neutral-500)' }}>{n.message}</p>
+                <div style={{ fontSize: 12, color: 'var(--neutral-400)' }}>{formatDateTime(n.createdAt)}</div>
+              </div>
+              {!n.read && <Button variant="table" onClick={() => markRead(n.id)}>Dismiss</Button>}
             </div>
-          )}
+          ))}
+          {personalNotifications.length === 0 && <div style={{ padding: 60, textAlign: 'center', color: 'var(--neutral-400)' }}>No personal alerts found.</div>}
         </div>
       )}
 
       <Modal
         isOpen={showModal}
-        title="Send Broadcast"
+        title="Compose System Broadcast"
         onClose={() => setShowModal(false)}
         actions={
-          <>
-            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>Cancel</Button>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button onClick={askSendBroadcast} loading={saving}>Send</Button>
-          </>
+          </div>
         }
       >
-        <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 20 }}>
           <div>
-            <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Title <span style={{ color: '#dc2626' }}>*</span></label>
-            <input className="form-input" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
+            <label className="form-label" style={{ display: 'block', marginBottom: 8 }}>Alert Title</label>
+            <input className="form-input" value={form.title} onChange={(e) => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Scheduled Maintenance" />
           </div>
           <div>
-            <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Message <span style={{ color: '#dc2626' }}>*</span></label>
-            <textarea className="form-input" rows={4} value={form.message} onChange={(e) => setForm((prev) => ({ ...prev, message: e.target.value }))} />
+            <label className="form-label" style={{ display: 'block', marginBottom: 8 }}>Detailed Message</label>
+            <textarea className="form-input" rows={4} value={form.message} onChange={(e) => setForm(p => ({ ...p, message: e.target.value }))} placeholder="Provide clear information to the recipients..." />
           </div>
           <div>
-            <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Target Role</label>
-            <select className="form-input" value={form.targetRole} onChange={(e) => setForm((prev) => ({ ...prev, targetRole: e.target.value }))}>
-              <option value="">All Users</option>
-              <option value="ATTENDEE">Attendees</option>
-              <option value="ORGANIZER">Organizers</option>
-              <option value="ADMIN">Admins</option>
+            <label className="form-label" style={{ display: 'block', marginBottom: 8 }}>Target Audience</label>
+            <select className="form-input" value={form.targetRole} onChange={(e) => setForm(p => ({ ...p, targetRole: e.target.value }))}>
+              <option value="">All Users (Global)</option>
+              <option value="ATTENDEE">Attendees Only</option>
+              <option value="ORGANIZER">Organizers Only</option>
+              <option value="ADMIN">Administrators Only</option>
             </select>
           </div>
         </div>
       </Modal>
-      <AdminConfirmModal
-        confirm={confirm}
-        loading={saving}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => confirm?.onConfirm?.()}
-      />
+
+      <AdminConfirmModal confirm={confirm} loading={saving} onClose={() => setConfirm(null)} onConfirm={() => confirm?.onConfirm?.()} />
     </div>
   );
 }

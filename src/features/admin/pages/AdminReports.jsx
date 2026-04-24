@@ -105,7 +105,7 @@ export default function AdminReports() {
           <h2 className="view-title">Reports & Analytics</h2>
           <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Platform revenue, registrations and organizer performance.</p>
         </div>
-        <Button variant="secondary" onClick={exportReports}>Export</Button>
+        <Button variant="secondary" onClick={exportReports}>Export Data</Button>
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: '32px', alignItems: 'center', background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>

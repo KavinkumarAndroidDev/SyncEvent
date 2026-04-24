@@ -4,7 +4,6 @@ import axiosInstance from '../../../lib/axios';
 import { fetchMetadata } from '../../metadata/slices/metadataSlice';
 import Pagination from '../../../components/ui/Pagination';
 import Button from '../../../components/ui/Button';
-import AdminToolbar from '../components/AdminToolbar';
 import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
 import AdminConfirmModal from '../components/AdminConfirmModal';
@@ -19,8 +18,8 @@ export default function AdminCategories() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name-asc');
-  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
+  const [pageSize] = useState(10);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -28,6 +27,7 @@ export default function AdminCategories() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
   const [confirm, setConfirm] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   async function loadCategories() {
     try {
@@ -36,7 +36,7 @@ export default function AdminCategories() {
       setItems(res.data || []);
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load categories.');
+      setMessage('Failed to load categories.');
     } finally {
       setLoading(false);
     }
@@ -46,24 +46,33 @@ export default function AdminCategories() {
     loadCategories();
   }, []);
 
+  const stats = useMemo(() => ({
+    total: items.length,
+    active: items.filter(i => i.status === 'ACTIVE').length,
+    inactive: items.filter(i => i.status === 'INACTIVE').length,
+  }), [items]);
+
   const filteredItems = useMemo(() => {
-    const result = items.filter((item) => item.name?.toLowerCase().includes(search.toLowerCase()));
+    const result = items.filter((item) => {
+      const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
 
     result.sort((a, b) => {
       if (sort === 'name-asc') return a.name.localeCompare(b.name);
       if (sort === 'name-desc') return b.name.localeCompare(a.name);
-      if (sort === 'status') return a.status.localeCompare(b.status);
       return Number(b.id) - Number(a.id);
     });
 
     return result;
-  }, [items, search, sort]);
+  }, [items, search, sort, statusFilter]);
 
   const totalPages = Math.ceil(filteredItems.length / pageSize);
   const pagedItems = filteredItems.slice(page * pageSize, (page + 1) * pageSize);
 
   function exportItems() {
-    exportCsv('categories.csv', ['ID', 'Name', 'Status'], filteredItems.map((item) => [item.id, item.name, item.status]));
+    exportCsv('categories.csv', ['ID', 'Category Name', 'Status'], filteredItems.map(i => [i.id, i.name, i.status]));
   }
 
   function openCreateModal() {
@@ -81,46 +90,32 @@ export default function AdminCategories() {
   }
 
   function closeModal() {
-    setEditingItem(null);
-    setForm(EMPTY_FORM);
-    setErrors({});
     setShowModal(false);
   }
 
-  function handleFormChange(name, value) {
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: '' }));
-  }
-
-  function validateForm() {
-    const nextErrors = {};
-    if (!form.categoryName.trim()) {
-      nextErrors.categoryName = 'Category name is required.';
-    }
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }
-
   async function handleSubmit() {
-    if (!validateForm()) return;
+    if (!form.categoryName.trim()) {
+      setErrors({ categoryName: 'Required' });
+      return;
+    }
 
     try {
       setSaving(true);
       if (editingItem) {
         await axiosInstance.put(`/categories/${editingItem.id}`, { categoryName: form.categoryName.trim() });
         setMessageType('success');
-        setMessage('Category updated successfully.');
+        setMessage('Category updated.');
       } else {
         await axiosInstance.post('/categories', { categoryName: form.categoryName.trim() });
         setMessageType('success');
-        setMessage('Category created successfully.');
+        setMessage('Category created.');
       }
       closeModal();
       await loadCategories();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to save category.');
+      setMessage('Operation failed.');
     } finally {
       setSaving(false);
     }
@@ -132,13 +127,13 @@ export default function AdminCategories() {
       const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
       await axiosInstance.patch(`/categories/${item.id}/status`, { status: nextStatus });
       setMessageType('success');
-      setMessage(`Category marked as ${nextStatus.toLowerCase()}.`);
+      setMessage(`Category status updated to ${nextStatus}.`);
       setConfirm(null);
       await loadCategories();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to update category status.');
+      setMessage('Status update failed.');
     } finally {
       setSaving(false);
     }
@@ -147,89 +142,73 @@ export default function AdminCategories() {
   function askToggleStatus(item) {
     const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     setConfirm({
-      title: 'Update Category Status',
-      message: `Are you sure you want to mark ${item.name} as ${nextStatus}?`,
+      title: 'Confirm Action',
+      message: `Change status for ${item.name} to ${nextStatus === 'ACTIVE' ? 'Activate' : 'Suspend'}?`,
       onConfirm: () => toggleStatus(item),
     });
   }
 
   return (
     <div style={{ padding: 40 }}>
-      <AdminToolbar
-        title="Categories"
-        description="Create, edit, search, sort, and manage category status."
-        search={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPage(0);
-        }}
-        sort={sort}
-        onSortChange={(value) => {
-          setSort(value);
-          setPage(0);
-        }}
-        pageSize={pageSize}
-        onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(0);
-        }}
-        onExport={exportItems}
-        sortOptions={[
-          { value: 'name-asc', label: 'Name A-Z' },
-          { value: 'name-desc', label: 'Name Z-A' },
-          { value: 'status', label: 'Status' },
-          { value: 'latest', label: 'Latest' },
-        ]}
-        actionLabel="Add Category"
-        onAction={openCreateModal}
-      />
-
-      {message && (
-        <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 20 }}>
-          {message}
+      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div>
+          <h2 className="view-title">Categories</h2>
+          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage event categories for the platform.</p>
         </div>
-      )}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Button variant="secondary" onClick={exportItems}>Export Data</Button>
+          <Button onClick={openCreateModal}>Add Category</Button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
+        <div className="admin-stat-card">
+          <div className="admin-stat-label">Total Categories</div>
+          <div className="admin-stat-value">{stats.total}</div>
+        </div>
+        <div className="admin-stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+          <div className="admin-stat-label">Active</div>
+          <div className="admin-stat-value" style={{ color: 'var(--primary)' }}>{stats.active}</div>
+        </div>
+        <div className="admin-stat-card" style={{ borderLeft: '4px solid #ef4444' }}>
+          <div className="admin-stat-label">Inactive</div>
+          <div className="admin-stat-value" style={{ color: '#ef4444' }}>{stats.inactive}</div>
+        </div>
+      </div>
+
+      {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 20 }}>{message}</div>}
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <input className="form-input" style={{ flex: 1, minWidth: 220 }} placeholder="Search categories..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+        <select className="form-input" style={{ width: 180 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+          <option value="ALL">All Status Levels</option>
+          <option value="ACTIVE">Active Only</option>
+          <option value="INACTIVE">Inactive Only</option>
+        </select>
+      </div>
 
       <div className="table-responsive">
         <table className="dashboard-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Name</th>
+              <th>Category Name</th>
               <th>Status</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {!loading && pagedItems.map((item, index) => (
+            {!loading && pagedItems.map((item) => (
               <tr key={item.id}>
-                <td>{page * pageSize + index + 1}</td>
-                <td style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.name}</td>
+                <td style={{ fontWeight: 600 }}>{item.name}</td>
                 <td><AdminStatusBadge status={item.status} /></td>
-                <td>
-                  <div className="row-actions">
+                <td style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <Button variant="table" onClick={() => openEditModal(item)}>Edit</Button>
-                    <Button variant="table" onClick={() => askToggleStatus(item)}>
-                      {item.status === 'ACTIVE' ? 'Disable' : 'Enable'}
-                    </Button>
+                    <Button variant="table" onClick={() => askToggleStatus(item)}>{item.status === 'ACTIVE' ? 'Suspend' : 'Activate'}</Button>
                   </div>
                 </td>
               </tr>
             ))}
-            {!loading && pagedItems.length === 0 && (
-              <tr>
-                <td colSpan="4" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
-                  No categories found.
-                </td>
-              </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan="4" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
-                  Loading categories...
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -243,16 +222,11 @@ export default function AdminCategories() {
         fields={[{ name: 'categoryName', label: 'Category Name', placeholder: 'Enter category name' }]}
         errors={errors}
         loading={saving}
-        onChange={handleFormChange}
+        onChange={(name, val) => setForm(p => ({ ...p, [name]: val }))}
         onClose={closeModal}
         onSubmit={handleSubmit}
       />
-      <AdminConfirmModal
-        confirm={confirm}
-        loading={saving}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => confirm?.onConfirm?.()}
-      />
+      <AdminConfirmModal confirm={confirm} loading={saving} onClose={() => setConfirm(null)} onConfirm={() => confirm?.onConfirm?.()} />
     </div>
   );
 }

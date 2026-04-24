@@ -11,16 +11,12 @@ import About from '../features/public/pages/About';
 import Contact from '../features/public/pages/Contact';
 import NotFound from '../features/public/pages/NotFound';
 import { AuthLoader, GuestRoute, ProtectedRoute, PublicRoute } from './routeGuards';
-
-// Attendee Dashboard
 import AttendeeDashboard from '../features/attendee/layouts/AttendeeDashboard';
 import Overview from '../features/attendee/pages/Overview';
 import Profile from '../features/attendee/pages/Profile';
 import MyRegistrations from '../features/attendee/pages/MyRegistrations';
 import PastEvents from '../features/attendee/pages/PastEvents';
 import Payments from '../features/attendee/pages/Payments';
-
-// Admin Dashboard
 import AdminDashboard from '../features/admin/layouts/AdminDashboard';
 import AdminOverview from '../features/admin/pages/AdminOverview';
 import AdminCategories from '../features/admin/pages/AdminCategories';
@@ -34,14 +30,18 @@ import AdminNotifications from '../features/admin/pages/AdminNotifications';
 import AdminOffers from '../features/admin/pages/AdminOffers';
 import AdminReports from '../features/admin/pages/AdminReports';
 import AdminEvents from '../features/admin/pages/AdminEvents';
-
-// Organizer Dashboard
 import OrganizerDashboard from '../features/organizer/layouts/OrganizerDashboard';
 import OrganizerOverview from '../features/organizer/pages/OrganizerOverview';
+import OrganizerEvents from '../features/organizer/pages/OrganizerEvents';
+import OrganizerCreateEvent from '../features/organizer/pages/OrganizerCreateEvent';
+import OrganizerEditEvent from '../features/organizer/pages/OrganizerEditEvent';
+import OrganizerTickets from '../features/organizer/pages/OrganizerTickets';
+import OrganizerRegistrations from '../features/organizer/pages/OrganizerRegistrations';
+import OrganizerPayments from '../features/organizer/pages/OrganizerPayments';
+import OrganizerReports from '../features/organizer/pages/OrganizerReports';
+import OrganizerNotifications from '../features/organizer/pages/OrganizerNotifications';
 import OrganizerReviews from '../features/organizer/pages/OrganizerReviews';
-
-// Placeholder
-import DashboardPlaceholder from '../components/common/DashboardPlaceholder';
+import OrganizerProfile from '../features/organizer/pages/OrganizerProfile';
 
 const router = createBrowserRouter([
   {
@@ -62,9 +62,6 @@ const router = createBrowserRouter([
             ]
           },
           { path: 'register/organizer', element: <RegisterOrganizer /> },
-
-
-          // Attendee Dashboard
           {
             element: <ProtectedRoute allowedRoles={['ATTENDEE']} />,
             children: [
@@ -82,8 +79,6 @@ const router = createBrowserRouter([
               },
             ],
           },
-
-          // Admin Dashboard
           {
             element: <ProtectedRoute allowedRoles={['ADMIN']} />,
             children: [
@@ -108,8 +103,6 @@ const router = createBrowserRouter([
               },
             ],
           },
-
-          // Organizer Dashboard
           {
             element: <ProtectedRoute allowedRoles={['ORGANIZER']} />,
             children: [
@@ -118,21 +111,20 @@ const router = createBrowserRouter([
                 element: <OrganizerDashboard />,
                 children: [
                   { index: true, element: <OrganizerOverview /> },
-                  { path: 'events', element: <DashboardPlaceholder title="My Events" /> },
-                  { path: 'create-event', element: <DashboardPlaceholder title="Create Event" /> },
-                  { path: 'tickets', element: <DashboardPlaceholder title="Ticket Management" /> },
-                  { path: 'registrations', element: <DashboardPlaceholder title="Registrations" /> },
-                  { path: 'payments', element: <DashboardPlaceholder title="Payments" /> },
-                  { path: 'reports', element: <DashboardPlaceholder title="Reports" /> },
-                  { path: 'notifications', element: <DashboardPlaceholder title="Notifications" /> },
+                  { path: 'events', element: <OrganizerEvents /> },
+                  { path: 'create-event', element: <OrganizerCreateEvent /> },
+                  { path: 'events/edit/:id', element: <OrganizerEditEvent /> },
+                  { path: 'tickets', element: <OrganizerTickets /> },
+                  { path: 'registrations', element: <OrganizerRegistrations /> },
+                  { path: 'payments', element: <OrganizerPayments /> },
+                  { path: 'reports', element: <OrganizerReports /> },
+                  { path: 'notifications', element: <OrganizerNotifications /> },
                   { path: 'reviews', element: <OrganizerReviews /> },
-                  { path: 'profile', element: <DashboardPlaceholder title="Organizer Profile" /> },
+                  { path: 'profile', element: <OrganizerProfile /> },
                 ],
               },
             ],
           },
-
-          // Guest-only routes
           {
             element: <GuestRoute />,
             children: [

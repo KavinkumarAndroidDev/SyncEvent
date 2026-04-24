@@ -11,56 +11,66 @@ export default function AdminEvents() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('PUBLISHED');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedTickets, setSelectedTickets] = useState([]);
   const [stats, setStats] = useState({ total: 0, published: 0, pending: 0, cancelled: 0 });
+  const [updating, setUpdating] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const [summaryRes, pendingRes, cancelledRes] = await Promise.all([
+        axiosInstance.get('/reports/summary').catch(() => ({ data: {} })),
+        axiosInstance.get('/events?status=PENDING_APPROVAL&size=1').catch(() => ({ data: { totalElements: 0 } })),
+        axiosInstance.get('/events?status=CANCELLED&size=1').catch(() => ({ data: { totalElements: 0 } }))
+      ]);
+
+      const summary = summaryRes.data || {};
+      setStats({
+        total: summary.totalEvents || 0,
+        published: summary.publishedEvents || 0,
+        pending: pendingRes.data?.totalElements || 0,
+        cancelled: cancelledRes.data?.totalElements || 0
+      });
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+    }
+  }, []);
 
   const loadEvents = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get('/events?size=200');
-      const data = res.data.content || [];
-      setEvents(data);
+      let sortParam = 'startTime,desc';
+      if (sortBy === 'oldest') sortParam = 'startTime,asc';
+      else if (sortBy === 'title-asc') sortParam = 'title,asc';
+      else if (sortBy === 'status') sortParam = 'status,asc';
 
-      const total = data.length;
-      const published = data.filter(e => e.status === 'PUBLISHED').length;
-      const pending = data.filter(e => e.status === 'PENDING_APPROVAL').length;
-      const cancelled = data.filter(e => e.status === 'CANCELLED').length;
-      setStats({ total, published, pending, cancelled });
+      let query = `/events?size=200&sort=${sortParam}`;
+      if (statusFilter !== 'ALL') query += `&status=${statusFilter}`;
+
+      const res = await axiosInstance.get(query);
+      setEvents(res.data.content || []);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter, sortBy]);
 
   useEffect(() => {
+    loadStats();
     loadEvents();
-  }, [loadEvents]);
+  }, [loadStats, loadEvents]);
 
   const filteredEvents = useMemo(() => {
-    let result = events.filter((item) => {
-      const text = `${item.title || ''} ${item.categoryName || ''} ${item.venueName || ''} ${item.city || ''}`.toLowerCase();
-      const matchesSearch = text.includes(search.toLowerCase());
-      const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
-      return matchesSearch && matchesStatus;
+    return [...events].filter((item) => {
+      const text = `${item.title || ''} ${item.categoryName || ''} ${item.venueName || ''}`.toLowerCase();
+      return text.includes(search.toLowerCase());
     });
-
-    if (sortBy === 'newest') result.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
-    if (sortBy === 'oldest') result.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-    if (sortBy === 'title-asc') result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-    if (sortBy === 'title-desc') result.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
-    if (sortBy === 'status') {
-      const priority = { 'PENDING_APPROVAL': 1, 'APPROVED': 2, 'PUBLISHED': 3, 'DRAFT': 4, 'CANCELLED': 5, 'COMPLETED': 6, 'REJECTED': 7 };
-      result.sort((a, b) => (priority[a.status] || 99) - (priority[b.status] || 99));
-    }
-
-    return result;
-  }, [events, search, statusFilter, sortBy]);
+  }, [events, search]);
 
   const totalPages = Math.ceil(filteredEvents.length / pageSize);
   const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
@@ -78,115 +88,100 @@ export default function AdminEvents() {
     }
   }
 
+  async function updateEventStatus(id, status) {
+    try {
+      setUpdating(true);
+      await axiosInstance.patch(`/events/${id}/status`, { status });
+      await loadEvents();
+      await loadStats();
+      setSelectedEvent(null);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update status');
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   function exportEventsList() {
-    exportCsv('all-events.csv', ['ID', 'Title', 'Category', 'Venue', 'City', 'Start', 'Status'], filteredEvents.map((item) => [
-      item.id,
-      item.title,
-      item.categoryName,
-      item.venueName,
-      item.city,
-      item.startTime,
-      item.status,
+    exportCsv('events.csv', ['ID', 'Title', 'Category', 'Organizer', 'Status', 'Start Date'], filteredEvents.map(e => [
+      e.id, e.title, e.categoryName, e.organizerName, e.status, e.startTime
     ]));
   }
 
-  if (loading) return <Spinner label="Loading events..." />;
+  if (loading && events.length === 0) return <Spinner label="Loading events..." />;
 
   return (
     <div style={{ padding: 40 }}>
-      <div className="view-header">
-        <h2 className="view-title">All Events</h2>
-        <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage and view all events across the platform.</p>
+      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+        <div>
+          <h2 className="view-title">Events</h2>
+          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Manage all events on the platform.</p>
+        </div>
+        <Button variant="secondary" onClick={exportEventsList}>Export Data</Button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
-          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Total Events</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--neutral-900)' }}>{stats.total}</div>
+        <div className="admin-stat-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('ALL')}>
+          <div className="admin-stat-label">Total Events</div>
+          <div className="admin-stat-value">{stats.total}</div>
         </div>
-        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
-          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Published</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)' }}>{stats.published}</div>
+        <div className="admin-stat-card" style={{ cursor: 'pointer', borderLeft: '4px solid var(--primary)' }} onClick={() => setStatusFilter('PUBLISHED')}>
+          <div className="admin-stat-label">Published</div>
+          <div className="admin-stat-value" style={{ color: 'var(--primary)' }}>{stats.published}</div>
         </div>
-        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
-          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Pending Approval</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#eab308' }}>{stats.pending}</div>
+        <div className="admin-stat-card" style={{ cursor: 'pointer', borderLeft: '4px solid #eab308' }} onClick={() => setStatusFilter('PENDING_APPROVAL')}>
+          <div className="admin-stat-label">Pending Review</div>
+          <div className="admin-stat-value" style={{ color: '#eab308' }}>{stats.pending}</div>
         </div>
-        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
-          <div style={{ fontSize: '13px', color: 'var(--neutral-400)', marginBottom: '4px' }}>Cancelled</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#ef4444' }}>{stats.cancelled}</div>
+        <div className="admin-stat-card" style={{ cursor: 'pointer', borderLeft: '4px solid #ef4444' }} onClick={() => setStatusFilter('CANCELLED')}>
+          <div className="admin-stat-label">Cancelled</div>
+          <div className="admin-stat-value" style={{ color: '#ef4444' }}>{stats.cancelled}</div>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-        <input
-          className="form-input"
-          style={{ flex: 1, minWidth: 220 }}
-          placeholder="Search event title or venue..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(0);
-          }}
-        />
-        <select className="form-input" style={{ width: 150 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+        <input className="form-input" style={{ flex: 1, minWidth: 220 }} placeholder="Search by title, venue or category..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+        <select className="form-input" style={{ width: 160 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
           <option value="ALL">All Statuses</option>
-          <option value="DRAFT">Draft</option>
+          <option value="PUBLISHED">Published</option>
           <option value="PENDING_APPROVAL">Pending</option>
           <option value="APPROVED">Approved</option>
-          <option value="PUBLISHED">Published</option>
           <option value="CANCELLED">Cancelled</option>
           <option value="COMPLETED">Completed</option>
         </select>
         <select className="form-input" style={{ width: 160 }} value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(0); }}>
-          <option value="newest">Sort by Date (Newest)</option>
-          <option value="oldest">Sort by Date (Oldest)</option>
-          <option value="title-asc">Sort by Title (A-Z)</option>
-          <option value="title-desc">Sort by Title (Z-A)</option>
-          <option value="status">Sort by Status (Priority)</option>
+          <option value="newest">Recent First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="title-asc">Title (A-Z)</option>
+          <option value="status">By Status</option>
         </select>
-        <select className="form-input" style={{ width: 130 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
-          <option value={10}>10 / page</option>
-          <option value={20}>20 / page</option>
-          <option value={50}>50 / page</option>
-        </select>
-        <Button variant="secondary" onClick={exportEventsList}>Export</Button>
       </div>
 
       <div className="table-responsive">
         <table className="dashboard-table">
           <thead>
             <tr>
-              <th>#</th>
               <th>Event</th>
-              <th>Category</th>
+              <th>Organizer</th>
               <th>Venue</th>
-              <th>Start Date</th>
+              <th>Date & Time</th>
               <th>Status</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {pagedEvents.map((item, index) => (
+            {pagedEvents.map((item) => (
               <tr key={item.id}>
-                <td>{page * pageSize + index + 1}</td>
-                <td style={{ fontWeight: 600, color: 'var(--neutral-900)' }}>{item.title}</td>
-                <td>{item.categoryName || '-'}</td>
-                <td>{item.venueName || '-'}{item.city ? `, ${item.city}` : ''}</td>
-                <td>{formatDateTime(item.startTime)}</td>
-                <td><span className={`badge badge-${item.status?.toLowerCase()}`}>{item.status}</span></td>
-                <td>
-                  <Button variant="table" onClick={() => openEvent(item.id)}>View Details</Button>
+                <td style={{ fontWeight: 600 }}>{item.title}</td>
+                <td style={{ fontSize: 13 }}>{item.organizerName || item.organizer?.fullName || 'Organizer'}</td>
+                <td style={{ fontSize: 13 }}>{item.venueName || 'Online'}</td>
+                <td style={{ fontSize: 13 }}>{formatDateTime(item.startTime)}</td>
+                <td><span className={`badge badge-${item.status?.toLowerCase().replaceAll('_', '-')}`}>{item.status}</span></td>
+                <td style={{ textAlign: 'right' }}>
+                  <Button variant="table" onClick={() => openEvent(item.id)}>Review</Button>
                 </td>
               </tr>
             ))}
-            {pagedEvents.length === 0 && (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
-                  No events found matching your criteria.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -195,64 +190,69 @@ export default function AdminEvents() {
 
       <Modal
         isOpen={!!selectedEvent}
-        title={selectedEvent?.title || 'Event Details'}
+        title="Event Details"
         onClose={() => setSelectedEvent(null)}
-        maxWidth="800px"
-        actions={<Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>}
+        maxWidth="900px"
+        actions={
+          <div style={{ display: 'flex', gap: 12 }}>
+            {selectedEvent?.status === 'PENDING_APPROVAL' && (
+              <Button onClick={() => updateEventStatus(selectedEvent.id, 'APPROVED')} loading={updating}>Approve</Button>
+            )}
+            {selectedEvent?.status === 'PENDING_APPROVAL' && (
+              <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'REJECTED')} loading={updating}>Reject</Button>
+            )}
+            {selectedEvent?.status === 'APPROVED' && (
+              <Button onClick={() => updateEventStatus(selectedEvent.id, 'PUBLISHED')} loading={updating}>Publish</Button>
+            )}
+            {['PUBLISHED', 'APPROVED'].includes(selectedEvent?.status) && (
+              <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'CANCELLED')} loading={updating}>Cancel</Button>
+            )}
+            <Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>
+          </div>
+        }
       >
         {selectedEvent && (
-          <div style={{ padding: '8px 0', fontSize: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
-              <div style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '12px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600, borderBottom: '1px solid var(--neutral-100)', paddingBottom: '8px' }}>Basic Info</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div><strong>ID:</strong> #{selectedEvent.id}</div>
-                  <div><strong>Category:</strong> {selectedEvent.category?.name || selectedEvent.categoryName || '-'}</div>
-                  <div><strong>Capacity:</strong> {selectedEvent.capacity || '-'}</div>
-                  <div><strong>Status:</strong> <span className={`badge badge-${selectedEvent.status?.toLowerCase()}`}>{selectedEvent.status}</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ background: 'var(--neutral-50)', padding: 20, borderRadius: 12 }}>
+                <h4 style={{ marginBottom: 12 }}>Detailed Information</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+                  <div><span style={{ color: 'var(--neutral-400)' }}>Category:</span> {selectedEvent.categoryName}</div>
+                  <div><span style={{ color: 'var(--neutral-400)' }}>Capacity:</span> {selectedEvent.capacity}</div>
+                  <div><span style={{ color: 'var(--neutral-400)' }}>Start:</span> {formatDateTime(selectedEvent.startTime)}</div>
+                  <div><span style={{ color: 'var(--neutral-400)' }}>End:</span> {formatDateTime(selectedEvent.endTime)}</div>
                 </div>
               </div>
-              <div style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '12px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600, borderBottom: '1px solid var(--neutral-100)', paddingBottom: '8px' }}>Organizer</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div><strong>Name:</strong> {selectedEvent.organizer?.fullName || '-'}</div>
-                  <div><strong>Email:</strong> {selectedEvent.organizer?.email || '-'}</div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '12px', marginBottom: '24px' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600, borderBottom: '1px solid var(--neutral-100)', paddingBottom: '8px' }}>Schedule & Location</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div><strong>Start:</strong> {formatDateTime(selectedEvent.startTime)}</div>
-                  <div><strong>End:</strong> {formatDateTime(selectedEvent.endTime)}</div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div><strong>Venue:</strong> {selectedEvent.venue?.name || selectedEvent.venueName || '-'}</div>
-                  <div><strong>Location:</strong> {[selectedEvent.venue?.address, selectedEvent.venue?.city || selectedEvent.city, selectedEvent.venue?.state].filter(Boolean).join(', ') || '-'}</div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Tickets</h4>
-              {selectedTickets.length === 0 ? (
-                <div style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>No tickets available.</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                  {selectedTickets.map((ticket) => (
-                    <div key={ticket.id} style={{ border: '1px solid var(--neutral-100)', borderRadius: '10px', padding: '12px', background: 'var(--white)' }}>
-                      <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{ticket.name}</div>
-                      <div style={{ color: 'var(--primary)', fontWeight: 600, marginBottom: '8px' }}>{formatMoney(ticket.price)}</div>
-                      <div style={{ color: 'var(--neutral-400)', fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Total: {ticket.totalQuantity || 0}</span>
-                        <span>Avail: {ticket.availableQuantity || 0}</span>
+              
+              <div>
+                <h4 style={{ marginBottom: 12 }}>Ticket Tiers</h4>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {selectedTickets.map(t => (
+                    <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 12, border: '1px solid var(--neutral-100)', borderRadius: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{t.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--neutral-400)' }}>{t.availableQuantity} of {t.totalQuantity} available</div>
                       </div>
+                      <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{formatMoney(t.price)}</div>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ background: 'white', border: '1px solid var(--neutral-100)', padding: 16, borderRadius: 12 }}>
+                <h4 style={{ marginBottom: 8, fontSize: 14 }}>Organizer</h4>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{selectedEvent.organizer?.fullName}</div>
+                <div style={{ fontSize: 12, color: 'var(--neutral-400)' }}>{selectedEvent.organizer?.email}</div>
+                <Button variant="table" style={{ marginTop: 12, width: '100%' }}>Contact Organizer</Button>
+              </div>
+
+              <div style={{ background: 'white', border: '1px solid var(--neutral-100)', padding: 16, borderRadius: 12 }}>
+                <h4 style={{ marginBottom: 8, fontSize: 14 }}>Location</h4>
+                <div style={{ fontSize: 13 }}>{selectedEvent.venueName || (selectedEvent.address ? 'Physical Venue' : 'Online Event')}</div>
+                <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{selectedEvent.address ? `${selectedEvent.address}, ${selectedEvent.city}` : 'Access details will be sent via email'}</div>
+              </div>
             </div>
           </div>
         )}

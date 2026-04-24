@@ -57,9 +57,20 @@ export default function AdminOffers() {
       .finally(() => setLoading(false));
   }, [eventId]);
 
+  const offerStats = useMemo(() => {
+    const active = offers.filter(o => getOfferStatus(o) === 'ACTIVE').length;
+    const expired = offers.filter(o => getOfferStatus(o) === 'INACTIVE').length;
+    return { total: offers.length, active, expired };
+  }, [offers]);
+
   const filteredOffers = useMemo(() => offers.filter((item) => item.code?.toLowerCase().includes(search.toLowerCase())), [offers, search]);
   const totalPages = Math.ceil(filteredOffers.length / pageSize);
   const pagedOffers = filteredOffers.slice(page * pageSize, (page + 1) * pageSize);
+
+  const selectedEventName = useMemo(() => {
+    const ev = events.find(e => String(e.id) === String(eventId));
+    return ev?.title || '';
+  }, [events, eventId]);
 
   function openCreate() {
     setEditingItem(null);
@@ -134,7 +145,7 @@ export default function AdminOffers() {
 
   function askStatus(item, status) {
     setConfirm({
-      title: 'Update Offer',
+      title: 'Confirm Action',
       message: `Are you sure you want to mark ${item.code} as ${status}?`,
       onConfirm: () => updateStatus(item, status),
     });
@@ -156,12 +167,15 @@ export default function AdminOffers() {
 
   return (
     <div style={{ padding: 40 }}>
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <div>
-          <h2 className="view-title">Offers</h2>
-          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Create and manage discount codes event wise.</p>
+          <h2 className="view-title">Offers & Discount Codes</h2>
+          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Create and manage discount codes per event.</p>
         </div>
-        <Button onClick={openCreate} disabled={!eventId}>Add Offer</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="secondary" onClick={exportOffers}>Export Data</Button>
+          <Button onClick={openCreate} disabled={!eventId}>Add Offer</Button>
+        </div>
       </div>
 
       {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`}>{message}</div>}
@@ -170,33 +184,56 @@ export default function AdminOffers() {
         <select className="form-input" style={{ flex: 1, minWidth: 220 }} value={eventId} onChange={(e) => { setEventId(e.target.value); setPage(0); }}>
           {events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}
         </select>
-        <input className="form-input" style={{ flex: 1, minWidth: 220 }} placeholder="Search offer code..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
-        <select className="form-input" style={{ width: 150 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+        <input className="form-input" style={{ flex: 1, minWidth: 180 }} placeholder="Search offer code..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+        <select className="form-input" style={{ width: 130 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
           <option value={5}>5 per page</option>
           <option value={10}>10 per page</option>
           <option value={20}>20 per page</option>
           <option value={50}>50 per page</option>
         </select>
-        <Button variant="secondary" onClick={exportOffers}>Export</Button>
       </div>
+
+      {eventId && offers.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, fontSize: 13, color: 'var(--neutral-500)' }}>
+          <span style={{ fontWeight: 600 }}>{selectedEventName}:</span>
+          <span>{offerStats.total} offers total</span>
+          <span>·</span>
+          <span style={{ color: 'var(--primary)' }}>{offerStats.active} active</span>
+          <span>·</span>
+          <span style={{ color: 'var(--neutral-400)' }}>{offerStats.expired} expired</span>
+        </div>
+      )}
 
       <div className="table-responsive">
         <table className="dashboard-table">
-          <thead><tr><th>#</th><th>Code</th><th>Discount</th><th>Valid</th><th>Usage Limit</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Code</th>
+              <th>Discount</th>
+              <th>Valid Until</th>
+              <th>Usage Limit</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
             {!loading && pagedOffers.map((item, index) => (
               <tr key={item.id}>
                 <td>{page * pageSize + index + 1}</td>
                 <td style={{ fontWeight: 700 }}>{item.code}</td>
-                <td>{item.discountPercentage}% up to {formatMoney(item.maxDiscountAmount)}</td>
-                <td>{formatDateTime(item.validFrom)} to {formatDateTime(item.validTo)}</td>
-                <td>{item.totalUsageLimit || '-'}</td>
+                <td>
+                  {item.discountPercentage}%
+                  {item.maxDiscountAmount ? <span style={{ color: 'var(--neutral-400)', fontSize: 12 }}> (up to {formatMoney(item.maxDiscountAmount)})</span> : ''}
+                </td>
+                <td>{formatDateTime(item.validTo)}</td>
+                <td>{item.totalUsageLimit ? item.totalUsageLimit : <span style={{ color: 'var(--neutral-400)' }}>Unlimited</span>}</td>
                 <td><span className={`badge badge-${getOfferStatus(item).toLowerCase()}`}>{getOfferStatus(item)}</span></td>
                 <td>
                   <div className="row-actions">
                     <Button variant="table" onClick={() => openEdit(item)}>Edit</Button>
                     <Button variant="table" onClick={() => askStatus(item, getOfferStatus(item) === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}>
-                      {getOfferStatus(item) === 'ACTIVE' ? 'Disable' : 'Enable'}
+                      {getOfferStatus(item) === 'ACTIVE' ? 'Suspend' : 'Activate'}
                     </Button>
                   </div>
                 </td>
@@ -214,15 +251,42 @@ export default function AdminOffers() {
         isOpen={showModal}
         title={editingItem ? 'Edit Offer' : 'Add Offer'}
         onClose={() => setShowModal(false)}
-        actions={<><Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>Cancel</Button><Button onClick={saveOffer} loading={saving}>Save</Button></>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>Cancel</Button>
+            <Button onClick={saveOffer} loading={saving}>Save</Button>
+          </>
+        }
       >
         <div style={{ display: 'grid', gap: 14 }}>
-          <input className="form-input" placeholder="Offer code *" value={form.code} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))} />
-          <input className="form-input" type="number" placeholder="Discount percentage *" value={form.discountPercentage} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, discountPercentage: e.target.value }))} />
-          <input className="form-input" type="number" placeholder="Max discount amount" value={form.maxDiscountAmount} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, maxDiscountAmount: e.target.value }))} />
-          <input className="form-input" type="datetime-local" value={form.validFrom} onChange={(e) => setForm((p) => ({ ...p, validFrom: e.target.value }))} />
-          <input className="form-input" type="datetime-local" value={form.validTo} onChange={(e) => setForm((p) => ({ ...p, validTo: e.target.value }))} />
-          <input className="form-input" type="number" placeholder="Usage limit" value={form.totalUsageLimit} onChange={(e) => setForm((p) => ({ ...p, totalUsageLimit: e.target.value }))} />
+          <div>
+            <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Offer Code *</label>
+            <input className="form-input" placeholder="e.g. SUMMER20" value={form.code} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Discount % *</label>
+              <input className="form-input" type="number" placeholder="e.g. 20" value={form.discountPercentage} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, discountPercentage: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Max Discount Amount</label>
+              <input className="form-input" type="number" placeholder="Leave blank for no cap" value={form.maxDiscountAmount} disabled={!!editingItem} onChange={(e) => setForm((p) => ({ ...p, maxDiscountAmount: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Valid From *</label>
+              <input className="form-input" type="datetime-local" value={form.validFrom} onChange={(e) => setForm((p) => ({ ...p, validFrom: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Valid To *</label>
+              <input className="form-input" type="datetime-local" value={form.validTo} onChange={(e) => setForm((p) => ({ ...p, validTo: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>Total Usage Limit</label>
+            <input className="form-input" type="number" placeholder="Leave blank for unlimited" value={form.totalUsageLimit} onChange={(e) => setForm((p) => ({ ...p, totalUsageLimit: e.target.value }))} />
+          </div>
         </div>
       </Modal>
       <AdminConfirmModal confirm={confirm} loading={saving} onClose={() => setConfirm(null)} onConfirm={() => confirm?.onConfirm?.()} />

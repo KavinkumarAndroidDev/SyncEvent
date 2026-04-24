@@ -29,6 +29,19 @@ export default function AdminPayments() {
     loadPayments();
   }, []);
 
+  const stats = useMemo(() => {
+    const successful = payments.filter(p => p.status === 'SUCCESS');
+    const failed = payments.filter(p => p.status === 'FAILED');
+    const pending = payments.filter(p => p.status === 'PENDING');
+    const totalRevenue = successful.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    return {
+      totalRevenue,
+      successCount: successful.length,
+      failedCount: failed.length,
+      pendingCount: pending.length,
+    };
+  }, [payments]);
+
   const filteredPayments = useMemo(() => {
     return payments.filter((payment) => {
       const refId = `REF-${payment.id}`.toLowerCase();
@@ -64,6 +77,35 @@ export default function AdminPayments() {
         <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Monitor all payment records across the platform.</p>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 28 }}>
+        <div style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
+          <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginBottom: 4 }}>Total Revenue</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)' }}>{formatMoney(stats.totalRevenue)}</div>
+          <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>from successful payments</div>
+        </div>
+        <div
+          style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)', cursor: 'pointer' }}
+          onClick={() => { setStatusFilter('SUCCESS'); setPage(0); }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginBottom: 4 }}>Successful</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#16a34a' }}>{stats.successCount}</div>
+        </div>
+        <div
+          style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)', cursor: 'pointer' }}
+          onClick={() => { setStatusFilter('PENDING'); setPage(0); }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginBottom: 4 }}>Pending</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#eab308' }}>{stats.pendingCount}</div>
+        </div>
+        <div
+          style={{ background: 'var(--white)', padding: '20px', borderRadius: '12px', border: '1px solid var(--neutral-100)', cursor: 'pointer' }}
+          onClick={() => { setStatusFilter('FAILED'); setPage(0); }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginBottom: 4 }}>Failed</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#ef4444' }}>{stats.failedCount}</div>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
         <input
           className="form-input"
@@ -87,8 +129,20 @@ export default function AdminPayments() {
           <option value={20}>20 per page</option>
           <option value={50}>50 per page</option>
         </select>
-        <Button variant="secondary" onClick={exportPayments}>Export</Button>
+        <Button variant="secondary" onClick={exportPayments}>Export Data</Button>
       </div>
+
+      {statusFilter !== 'ALL' && (
+        <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginBottom: 12 }}>
+          Showing {filteredPayments.length} {statusFilter.toLowerCase()} payments ·{' '}
+          <button
+            onClick={() => { setStatusFilter('ALL'); setPage(0); }}
+            style={{ color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       <div className="table-responsive">
         <table className="dashboard-table">
@@ -112,7 +166,7 @@ export default function AdminPayments() {
                 <td>{formatDateTime(payment.createdAt)}</td>
                 <td style={{ fontWeight: 700 }}>{formatMoney(payment.amount)}</td>
                 <td><span className={`badge badge-${String(payment.status || '').toLowerCase()}`}>{payment.status}</span></td>
-                <td><Button variant="table" onClick={() => setSelectedInvoice(payment)}>View</Button></td>
+                <td><Button variant="table" onClick={() => setSelectedInvoice(payment)}>Review</Button></td>
               </tr>
             ))}
             {!loading && pagedPayments.length === 0 && (
@@ -150,6 +204,7 @@ export default function AdminPayments() {
             <div className="receipt-row"><span className="label">Gateway</span><span className="value">{selectedInvoice.gateway || 'Razorpay'}</span></div>
             <div className="receipt-row"><span className="label">Order ID</span><span className="value">{selectedInvoice.razorpayOrderId || '-'}</span></div>
             <div className="receipt-row"><span className="label">Payment ID</span><span className="value">{selectedInvoice.razorpayPaymentId || '-'}</span></div>
+            <div className="receipt-row"><span className="label">Status</span><span className="value"><span className={`badge badge-${String(selectedInvoice.status || '').toLowerCase()}`}>{selectedInvoice.status}</span></span></div>
             <div className="receipt-total">
               <span className="total-label">Amount</span>
               <span className="total-value">{formatMoney(selectedInvoice.amount)}</span>

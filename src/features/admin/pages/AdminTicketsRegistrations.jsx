@@ -134,7 +134,7 @@ export default function AdminTicketsRegistrations() {
           <option value={10}>10 per page</option>
           <option value={20}>20 per page</option>
         </select>
-        <Button variant="secondary" onClick={exportEvents}>Export</Button>
+        <Button variant="secondary" onClick={exportEvents}>Export Data</Button>
       </div>
 
           <div className="table-responsive">
@@ -158,7 +158,7 @@ export default function AdminTicketsRegistrations() {
                     </td>
                     <td><span className={`badge badge-${String(item.status || '').toLowerCase().replaceAll('_', '-')}`}>{item.status}</span></td>
                     <td>{item.confirmedRegistrations || 0} / {item.totalRegistrations || 0}</td>
-                    <td><Button variant="table" onClick={() => setSelectedEvent(item)}>Open</Button></td>
+                    <td><Button variant="table" onClick={() => setSelectedEvent(item)}>Review</Button></td>
                   </tr>
                 ))}
                 {!loading && pagedEvents.length === 0 && (

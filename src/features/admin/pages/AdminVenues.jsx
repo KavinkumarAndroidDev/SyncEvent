@@ -9,6 +9,7 @@ import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+
 const EMPTY_FORM = { name: '', address: '', city: '', state: '', capacity: '' };
 
 export default function AdminVenues() {
@@ -44,6 +45,13 @@ export default function AdminVenues() {
   useEffect(() => {
     loadVenues();
   }, []);
+
+  const stats = useMemo(() => {
+    const active = items.filter(i => i.status === 'ACTIVE').length;
+    const totalCapacity = items.filter(i => i.status === 'ACTIVE').reduce((sum, i) => sum + (Number(i.capacity) || 0), 0);
+    const cities = new Set(items.map(i => i.city).filter(Boolean)).size;
+    return { total: items.length, active, totalCapacity, cities };
+  }, [items]);
 
   const filteredItems = useMemo(() => {
     const result = items.filter((item) => {
@@ -177,7 +185,7 @@ export default function AdminVenues() {
   function askToggleStatus(item) {
     const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     setConfirm({
-      title: 'Update Venue Status',
+      title: 'Confirm Action',
       message: `Are you sure you want to mark ${item.name} as ${nextStatus}?`,
       onConfirm: () => toggleStatus(item),
     });
@@ -185,41 +193,47 @@ export default function AdminVenues() {
 
   return (
     <div style={{ padding: 40 }}>
-      <AdminToolbar
-        title="Venues"
-        description="Manage venue details, status, search, sorting, and pagination."
-        search={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPage(0);
-        }}
-        sort={sort}
-        onSortChange={(value) => {
-          setSort(value);
-          setPage(0);
-        }}
-        sortOptions={[
-          { value: 'name-asc', label: 'Name A-Z' },
-          { value: 'name-desc', label: 'Name Z-A' },
-          { value: 'city', label: 'City' },
-          { value: 'capacity', label: 'Highest Capacity' },
-          { value: 'latest', label: 'Latest' },
-        ]}
-        actionLabel="Add Venue"
-        onAction={openCreateModal}
-        pageSize={pageSize}
-        onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(0);
-        }}
-        onExport={exportVenues}
-      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        <div>
+          <h2 className="view-title">Venues</h2>
+          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>
+            {stats.total} venues across {stats.cities} {stats.cities === 1 ? 'city' : 'cities'} · {stats.active} active · {stats.totalCapacity.toLocaleString()} total capacity
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="secondary" onClick={exportVenues}>Export Data</Button>
+          <Button onClick={openCreateModal}>Add Venue</Button>
+        </div>
+      </div>
 
       {message && (
         <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 20 }}>
           {message}
         </div>
       )}
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <input
+          className="form-input"
+          style={{ flex: 1, minWidth: 220 }}
+          placeholder="Search name, city or state..."
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+        />
+        <select className="form-input" style={{ width: 180 }} value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }}>
+          <option value="name-asc">Name A-Z</option>
+          <option value="name-desc">Name Z-A</option>
+          <option value="city">City</option>
+          <option value="capacity">Highest Capacity</option>
+          <option value="latest">Latest</option>
+        </select>
+        <select className="form-input" style={{ width: 130 }} value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <option value={5}>5 per page</option>
+          <option value={10}>10 per page</option>
+          <option value={20}>20 per page</option>
+          <option value={50}>50 per page</option>
+        </select>
+      </div>
 
       <div className="table-responsive">
         <table className="dashboard-table">
@@ -242,13 +256,13 @@ export default function AdminVenues() {
                   <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{item.address}</div>
                 </td>
                 <td>{item.city}, {item.state}</td>
-                <td>{item.capacity}</td>
+                <td>{Number(item.capacity || 0).toLocaleString()}</td>
                 <td><AdminStatusBadge status={item.status} /></td>
                 <td>
                   <div className="row-actions">
                     <Button variant="table" onClick={() => openEditModal(item)}>Edit</Button>
                     <Button variant="table" onClick={() => askToggleStatus(item)}>
-                      {item.status === 'ACTIVE' ? 'Disable' : 'Enable'}
+                      {item.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
                     </Button>
                   </div>
                 </td>

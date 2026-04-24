@@ -48,7 +48,7 @@ export default function AdminEventApprovals() {
   }, [loadEvents]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((item) => {
+    return [...events].filter((item) => {
       const text = `${item.title || ''} ${item.categoryName || ''} ${item.venueName || ''} ${item.city || ''}`.toLowerCase();
       return text.includes(search.toLowerCase());
     });
@@ -76,7 +76,7 @@ export default function AdminEventApprovals() {
 
   function askStatus(item, status) {
     setConfirm({
-      title: 'Update Event Status',
+      title: 'Confirm Action',
       message: `Are you sure you want to mark "${item.title}" as ${status}?`,
       onConfirm: () => updateStatus(item.id || item.eventId, status),
     });
@@ -139,7 +139,7 @@ export default function AdminEventApprovals() {
           <option value={20}>20 per page</option>
           <option value={50}>50 per page</option>
         </select>
-        <Button variant="secondary" onClick={exportEvents}>Export</Button>
+        <Button variant="secondary" onClick={exportEvents}>Export Data</Button>
       </div>
 
       <div className="table-responsive">
@@ -164,7 +164,7 @@ export default function AdminEventApprovals() {
                 <td>{formatDateTime(item.startTime)}</td>
                 <td>
                   <div className="row-actions">
-                    <Button variant="table" onClick={() => openEvent(item.id)}>View</Button>
+                    <Button variant="table" onClick={() => openEvent(item.id)}>Review</Button>
                     {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'APPROVED')}>Approve</Button>}
                     {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'REJECTED')}>Reject</Button>}
                     {statusFilter === 'APPROVED' && <Button variant="table" onClick={() => askStatus(item, 'PUBLISHED')}>Publish</Button>}
@@ -198,7 +198,23 @@ export default function AdminEventApprovals() {
         title={selectedEvent?.title || 'Event Details'}
         onClose={() => setSelectedEvent(null)}
         maxWidth="800px"
-        actions={<Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: 12 }}>
+            {selectedEvent?.status === 'PENDING_APPROVAL' && (
+              <Button onClick={() => askStatus(selectedEvent, 'APPROVED')} loading={saving}>Approve</Button>
+            )}
+            {selectedEvent?.status === 'PENDING_APPROVAL' && (
+              <Button variant="secondary" onClick={() => askStatus(selectedEvent, 'REJECTED')} loading={saving}>Reject</Button>
+            )}
+            {selectedEvent?.status === 'APPROVED' && (
+              <Button onClick={() => askStatus(selectedEvent, 'PUBLISHED')} loading={saving}>Publish</Button>
+            )}
+            {['PUBLISHED', 'APPROVED'].includes(selectedEvent?.status) && (
+              <Button variant="secondary" onClick={() => askStatus(selectedEvent, 'CANCELLED')} loading={saving}>Cancel</Button>
+            )}
+            <Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>
+          </div>
+        }
       >
         {selectedEvent && (
           <div style={{ padding: '8px 0', fontSize: 14 }}>
