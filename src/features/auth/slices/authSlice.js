@@ -12,6 +12,8 @@ const buildUserWithOrganizerStatus = async (data) => {
     fullName: data.fullName,
     email: data.email,
     role: data.role,
+    phone: data.phone,
+    gender: data.gender,
   };
 
   if (data.role === 'ORGANIZER') {

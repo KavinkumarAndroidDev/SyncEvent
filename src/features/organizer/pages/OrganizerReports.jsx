@@ -5,12 +5,16 @@ import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
-import { formatPercent, getBadgeClass } from '../utils/organizerHelpers';
 import { exportCsv } from '../../admin/utils/adminUtils';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, PieChart, Pie, Cell, Legend, ComposedChart, Area
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import OrgPageHeader from '../components/OrgPageHeader';
+import OrgStatCard from '../components/OrgStatCard';
+import OrgToast from '../components/OrgToast';
+import OrgPeriodFilter from '../components/OrgPeriodFilter';
+import OrgStatusBadge from '../components/OrgStatusBadge';
+import { useToast } from '../components/orgHooks.jsx';
 
 const COLORS = ['#17B978', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -19,14 +23,14 @@ export default function OrganizerReports() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  
+  const [period, setPeriod] = useState('ALL');
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedRevenue, setSelectedRevenue] = useState(null);
   const [selectedTickets, setSelectedTickets] = useState([]);
-  
+  const [modalLoading, setModalLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [message, setMessage] = useState('');
+  const { toast, showToast } = useToast();
   const pageSize = 10;
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export default function OrganizerReports() {
         setSummary(summaryRes.data || {});
         setItems(reportsRes.data?.content || []);
       } catch (err) {
-        setMessage(err.response?.data?.message || 'Failed to load analytical reports.');
+        showToast(err.response?.data?.message || 'Failed to load reports.', 'error');
       } finally {
         setLoading(false);
       }
@@ -49,12 +53,20 @@ export default function OrganizerReports() {
   }, []);
 
   const filteredItems = useMemo(() => {
+    const now = new Date();
+    const cutoff = new Date();
+    if (period === '7D') cutoff.setDate(now.getDate() - 7);
+    else if (period === '1M') cutoff.setDate(now.getDate() - 30);
+    else if (period === '1Y') cutoff.setFullYear(now.getFullYear() - 1);
+    else cutoff.setFullYear(2000);
+
     return items.filter(i => {
       const matchSearch = !search || i.eventTitle?.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === 'ALL' || i.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchPeriod = new Date(i.startTime) >= cutoff;
+      return matchSearch && matchStatus && matchPeriod;
     });
-  }, [items, search, statusFilter]);
+  }, [items, search, statusFilter, period]);
 
   const totalPages = Math.ceil(filteredItems.length / pageSize);
   const pagedItems = filteredItems.slice(page * pageSize, (page + 1) * pageSize);
@@ -64,33 +76,46 @@ export default function OrganizerReports() {
       .sort((a, b) => b.netRevenue - a.netRevenue)
       .slice(0, 8)
       .map(i => ({
-        name: i.eventTitle.length > 15 ? i.eventTitle.substring(0, 15) + '...' : i.eventTitle,
-        revenue: i.netRevenue || 0,
-        attendance: (i.attendanceRate || 0) * 100
+        name: i.eventTitle.length > 18 ? i.eventTitle.substring(0, 18) + '…' : i.eventTitle,
+        fullName: i.eventTitle,
+        revenue: Number(i.netRevenue || 0),
+        tickets: Number(i.confirmedRegistrations || 0),
+        attendance: Math.min(100, Number(i.attendanceRate || 0))
       }));
   }, [filteredItems]);
 
   const performanceStats = useMemo(() => {
-    if (!items.length) return { avgAttendance: 0, avgRating: 0, topEvent: 'None' };
-    
-    const totalAttendance = items.reduce((sum, i) => sum + (i.attendanceRate || 0), 0);
+    if (!items.length) return { avgAttendance: 0, avgRating: 0, topEvent: 'None', totalTickets: 0 };
+    const totalAttendance = items.reduce((sum, i) => sum + Math.min(100, Number(i.attendanceRate || 0)), 0);
     const sortedByRevenue = [...items].sort((a, b) => b.netRevenue - a.netRevenue);
-    
     return {
-      avgAttendance: (totalAttendance / items.length) * 100,
+      avgAttendance: items.length > 0 ? totalAttendance / items.length : 0,
       avgRating: summary.averageRating || 0,
-      topEvent: sortedByRevenue[0]?.eventTitle || 'None'
+      topEvent: sortedByRevenue[0]?.eventTitle || 'None',
+      totalTickets: items.reduce((sum, i) => sum + Number(i.confirmedRegistrations || 0), 0),
     };
   }, [items, summary]);
 
+  // Aggregate revenue from event reports if summary is empty
+  const totalRevenue = useMemo(() => {
+    if (summary.totalRevenue && summary.totalRevenue > 0) return summary.totalRevenue;
+    return items.reduce((sum, i) => sum + (i.netRevenue || 0), 0);
+  }, [summary, items]);
+
   const exportData = () => {
-    exportCsv('analytical_report.csv', ['Event', 'Status', 'Date', 'Revenue', 'Attendance %', 'Rating'], filteredItems.map(i => [
-      i.eventTitle, i.status, i.startTime, i.netRevenue, (i.attendanceRate * 100).toFixed(1) + '%', i.averageRating
-    ]));
+    exportCsv('analytics_report.csv',
+      ['Event', 'Status', 'Date', 'Revenue', 'Attendance %', 'Rating'],
+      filteredItems.map(i => [
+        i.eventTitle, i.status, i.startTime, i.netRevenue,
+        ((i.attendanceRate || 0) * 100).toFixed(1) + '%', i.averageRating
+      ])
+    );
   };
 
   async function openReport(item) {
     try {
+      setSelectedReport({ eventTitle: item.eventTitle, attendanceRate: item.attendanceRate, _loading: true });
+      setModalLoading(true);
       const [reportRes, revenueRes, ticketsRes] = await Promise.all([
         axiosInstance.get(`/reports/events/${item.eventId}`),
         axiosInstance.get(`/reports/events/${item.eventId}/revenue`),
@@ -100,120 +125,104 @@ export default function OrganizerReports() {
       setSelectedRevenue(revenueRes.data);
       setSelectedTickets(ticketsRes.data || []);
     } catch (err) {
-      setMessage('Failed to load deep-dive report.');
+      showToast('Failed to load event report.', 'error');
+      setSelectedReport(null);
+    } finally {
+      setModalLoading(false);
     }
   }
 
-  if (loading && !items.length) return <Spinner label="Generating Intelligence Reports..." />;
+  if (loading && !items.length) return <Spinner label="Loading performance reports..." />;
 
   return (
     <div style={{ padding: 40 }}>
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h2 className="view-title">Performance Insights</h2>
-          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Understand how your events are performing through revenue and engagement data.</p>
-        </div>
-        <Button variant="secondary" onClick={exportData} disabled={filteredItems.length === 0}>Download Report (CSV)</Button>
+      <OrgPageHeader
+        title="Performance Reports"
+        subtitle="Understand how your events are performing through revenue and engagement data."
+        actions={<Button variant="secondary" onClick={exportData} disabled={filteredItems.length === 0}>Download Report (CSV)</Button>}
+      />
+
+      <OrgToast msg={toast.msg} type={toast.type} />
+
+      <OrgPeriodFilter value={period} onChange={key => { setPeriod(key); setPage(0); }} />
+
+      <div className="admin-stat-grid" style={{ marginBottom: 28 }}>
+        <OrgStatCard label="Total Revenue"     value={formatMoney(totalRevenue)}                                     sub="Lifetime Net Earnings"            color="var(--primary)" />
+        <OrgStatCard label="Avg. Check-in Rate" value={`${Math.min(100, performanceStats.avgAttendance).toFixed(1)}%`} sub="Check-in Rate Across Events"       color="#10b981" />
+        <OrgStatCard label="Top Event"          value={performanceStats.topEvent}                                     sub="Highest Net Revenue"              color="#6366f1" />
+        <OrgStatCard label="Avg. Rating"        value={performanceStats.avgRating > 0 ? `${performanceStats.avgRating.toFixed(1)} / 5` : 'N/A'} sub="Attendee Satisfaction" color="#f59e0b" />
       </div>
 
-      <div className="admin-stat-grid" style={{ marginBottom: 32 }}>
-        <div className="admin-stat-card">
-          <div className="admin-stat-label">Overall Revenue</div>
-          <div className="admin-stat-value" style={{ color: 'var(--primary)' }}>{formatMoney(summary.totalRevenue)}</div>
-          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Lifetime Earnings</div>
-        </div>
-        <div className="admin-stat-card">
-          <div className="admin-stat-label">Avg. Engagement</div>
-          <div className="admin-stat-value">{performanceStats.avgAttendance.toFixed(1)}%</div>
-          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Attendance Rate</div>
-        </div>
-        <div className="admin-stat-card">
-          <div className="admin-stat-label">Top Performer</div>
-          <div className="admin-stat-value" style={{ fontSize: 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{performanceStats.topEvent}</div>
-          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Highest Net Revenue</div>
-        </div>
-        <div className="admin-stat-card">
-          <div className="admin-stat-label">Satisfaction Score</div>
-          <div className="admin-stat-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-            {Number(performanceStats.avgRating).toFixed(1)}/5.0
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Platform Average</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
+      {/* Charts */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 }}>
         <div style={{ background: 'white', border: '1px solid var(--neutral-100)', borderRadius: 16, padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--neutral-800)', marginBottom: 24 }}>Revenue vs Attendance (Top 8 Events)</h3>
-          <div style={{ height: 320 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={revenueChartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
-                <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val/1000}k`} tick={{fill: '#94a3b8', fontSize: 10}} />
-                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} tick={{fill: '#94a3b8', fontSize: 10}} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                <Legend verticalAlign="top" height={36}/>
-                <Bar yAxisId="left" name="Net Revenue (₹)" dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24} />
-                <Line yAxisId="right" name="Attendance Rate (%)" type="monotone" dataKey="attendance" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: '#f59e0b' }} />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Top Events by Revenue</h3>
+          <p style={{ fontSize: 12, color: 'var(--neutral-400)', marginBottom: 20 }}>Your highest earning events</p>
+          <div style={{ height: 260 }}>
+            {revenueChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueChartData} layout="vertical" margin={{ left: 0, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `₹${(v/1000).toFixed(0)}k` : `₹${v}`} tick={{fill: '#94a3b8', fontSize: 10}} />
+                  <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 11}} width={110} />
+                  <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString()}`, 'Net Revenue']} labelFormatter={(l, payload) => payload?.[0]?.payload?.fullName || l} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="revenue" name="Net Revenue" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={18} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>No data yet</div>
+            )}
           </div>
         </div>
 
         <div style={{ background: 'white', border: '1px solid var(--neutral-100)', borderRadius: 16, padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--neutral-800)', marginBottom: 24 }}>Event Status Breakdown</h3>
-          <div style={{ height: 320 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Published', value: items.filter(i => i.status === 'PUBLISHED').length },
-                    { name: 'Pending/Draft', value: items.filter(i => ['DRAFT', 'PENDING_APPROVAL'].includes(i.status)).length },
-                    { name: 'Completed', value: items.filter(i => i.status === 'COMPLETED').length },
-                    { name: 'Cancelled', value: items.filter(i => i.status === 'CANCELLED').length }
-                  ]}
-                  innerRadius={70}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {COLORS.map((color, index) => <Cell key={`cell-${index}`} fill={color} />)}
-                </Pie>
-                <Tooltip />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: 20 }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Top Events by Tickets Sold</h3>
+          <p style={{ fontSize: 12, color: 'var(--neutral-400)', marginBottom: 20 }}>Confirmed paid registrations</p>
+          <div style={{ height: 260 }}>
+            {revenueChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[...revenueChartData].sort((a, b) => b.tickets - a.tickets)} layout="vertical" margin={{ left: 0, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                  <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 11}} width={110} />
+                  <Tooltip formatter={(v) => [v, 'Tickets Sold']} labelFormatter={(l, payload) => payload?.[0]?.payload?.fullName || l} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="tickets" name="Tickets Sold" fill="#10b981" radius={[0, 4, 4, 0]} barSize={18} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>No data yet</div>
+            )}
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-        <input 
-          className="form-input" 
-          style={{ flex: 1, minWidth: 250 }} 
-          placeholder="Filter by event name..." 
-          value={search} 
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} 
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        <input
+          className="form-input" style={{ flex: 1, minWidth: 240 }}
+          placeholder="Search by event name..."
+          value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
         />
         <select className="form-input" style={{ width: 180 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="ALL">All Statuses</option>
           <option value="PUBLISHED">Published</option>
           <option value="COMPLETED">Completed</option>
           <option value="CANCELLED">Cancelled</option>
+          <option value="DRAFT">Draft</option>
         </select>
       </div>
 
+      {/* Table */}
       <div className="table-responsive">
         <table className="dashboard-table">
           <thead>
             <tr>
-              <th>Event Performance</th>
+              <th>Event</th>
               <th>Status</th>
-              <th>Financials</th>
-              <th>Engagement</th>
+              <th>Net Revenue</th>
+              <th>Attendance</th>
               <th>Rating</th>
-              <th style={{ textAlign: 'right' }}>Analysis</th>
+              <th style={{ textAlign: 'right' }}>Report</th>
             </tr>
           </thead>
           <tbody>
@@ -221,90 +230,117 @@ export default function OrganizerReports() {
               <tr key={item.eventId}>
                 <td>
                   <div style={{ fontWeight: 600 }}>{item.eventTitle}</div>
-                  <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>Started {formatDateTime(item.startTime)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>{formatDateTime(item.startTime).split(',')[0]}</div>
                 </td>
-                <td><span className={getBadgeClass(item.status)}>{item.status}</span></td>
+                <td><OrgStatusBadge status={item.status} /></td>
                 <td>
-                  <div style={{ fontWeight: 600, color: 'var(--primary)' }}>{formatMoney(item.netRevenue)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>Net Revenue</div>
+                  <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{formatMoney(item.netRevenue)}</div>
                 </td>
                 <td>
-                  <div style={{ fontWeight: 600 }}>{formatPercent(item.attendanceRate)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>{item.checkedInParticipants || 0} / {item.confirmedRegistrations || 0} arrived</div>
+                  <div style={{ fontWeight: 600 }}>{Math.min(100, Number(item.attendanceRate || 0)).toFixed(1)}%</div>
+                  <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>
+                    {item.checkedInParticipants || 0} / {item.confirmedRegistrations || 0} checked in
+                  </div>
                 </td>
-                <td style={{ fontWeight: 700, color: '#f59e0b' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, color: '#f59e0b' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
                     {Number(item.averageRating || 0).toFixed(1)}
                   </div>
                 </td>
-                <td style={{ textAlign: 'right' }}><Button variant="table" onClick={() => openReport(item)}>Deep Dive</Button></td>
+                <td style={{ textAlign: 'right' }}>
+                  <Button variant="table" onClick={() => openReport(item)}>View Report</Button>
+                </td>
               </tr>
             ))}
-            {!pagedItems.length && <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>No analytical data found.</td></tr>}
+            {!pagedItems.length && (
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'center', padding: 40, color: 'var(--neutral-400)' }}>
+                  No events found matching your filters.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       {totalPages > 1 && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
 
+      {/* Deep-dive Modal */}
       <Modal
         isOpen={!!selectedReport}
-        title={`Intelligence Deep-Dive: ${selectedReport?.eventTitle}`}
-        onClose={() => setSelectedReport(null)}
+        title={selectedReport ? `Event Report: ${selectedReport.eventTitle}` : ''}
+        onClose={() => { setSelectedReport(null); setSelectedRevenue(null); setSelectedTickets([]); }}
         maxWidth="950px"
-        actions={<Button variant="table" onClick={() => setSelectedReport(null)}>Close Insight</Button>}
+        actions={<Button variant="table" onClick={() => { setSelectedReport(null); setSelectedRevenue(null); setSelectedTickets([]); }}>Close</Button>}
       >
-        {selectedReport && (
+        {modalLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Spinner label="Loading event report..." />
+          </div>
+        ) : selectedReport && !selectedReport._loading && (
           <div style={{ display: 'grid', gap: 24 }}>
+            {/* Revenue Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-              <div style={{ background: 'var(--neutral-50)', padding: 16, borderRadius: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--neutral-400)', textTransform: 'uppercase' }}>Gross Sales</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{formatMoney(selectedRevenue?.grossRevenue)}</div>
-              </div>
-              <div style={{ background: 'var(--neutral-50)', padding: 16, borderRadius: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--neutral-400)', textTransform: 'uppercase' }}>Refunds</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#ef4444' }}>{formatMoney(selectedRevenue?.refundAmount)}</div>
-              </div>
-              <div style={{ background: 'var(--neutral-50)', padding: 16, borderRadius: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--neutral-400)', textTransform: 'uppercase' }}>Net ROI</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>{formatMoney(selectedRevenue?.netRevenue)}</div>
-              </div>
-              <div style={{ background: 'var(--neutral-50)', padding: 16, borderRadius: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--neutral-400)', textTransform: 'uppercase' }}>Attendance</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{formatPercent(selectedReport.attendanceRate)}</div>
-              </div>
+              {[
+                { label: 'Gross Sales', value: formatMoney(selectedRevenue?.grossRevenue), color: '#6366f1' },
+                { label: 'Refunds', value: formatMoney(selectedRevenue?.refundAmount), color: '#ef4444' },
+                { label: 'Net Revenue', value: formatMoney(selectedRevenue?.netRevenue), color: 'var(--primary)' },
+                { label: 'Attendance', value: `${Math.min(100, Number(selectedReport.attendanceRate || 0)).toFixed(1)}%`, color: '#10b981' },
+              ].map(card => (
+                <div key={card.label} style={{ background: 'var(--neutral-50)', padding: '16px 18px', borderRadius: 12, borderTop: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 11, color: 'var(--neutral-400)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: 8 }}>{card.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: card.color }}>{card.value}</div>
+                </div>
+              ))}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+              {/* Registration Funnel */}
               <div style={{ border: '1px solid var(--neutral-100)', borderRadius: 12, padding: 20 }}>
-                <h4 style={{ marginBottom: 16, fontSize: 14 }}>Registration Funnel</h4>
-                <div style={{ display: 'grid', gap: 12, fontSize: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Total Slots:</span> <strong>{selectedReport.capacity || 'Unlimited'}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Total Orders:</span> <strong>{selectedReport.totalRegistrations || 0}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Paid/Confirmed:</span> <strong>{selectedReport.confirmedRegistrations || 0}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Participants:</span> <strong>{selectedReport.totalParticipants || 0}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Check-ins:</span> <strong style={{ color: 'var(--primary)' }}>{selectedReport.checkedInParticipants || 0}</strong></div>
+                <h4 style={{ marginBottom: 16, fontSize: 14, fontWeight: 700 }}>Registration Funnel</h4>
+                <div style={{ display: 'grid', gap: 10, fontSize: 14 }}>
+                  {[
+                    { label: 'Event Capacity', value: selectedReport.capacity || 'Unlimited' },
+                    { label: 'Total Orders', value: selectedReport.totalRegistrations || 0 },
+                    { label: 'Confirmed & Paid', value: selectedReport.confirmedRegistrations || 0 },
+                    { label: 'Total Participants', value: selectedReport.totalParticipants || 0 },
+                    { label: 'Checked In', value: selectedReport.checkedInParticipants || 0, highlight: true },
+                  ].map(row => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--neutral-50)' }}>
+                      <span style={{ color: 'var(--neutral-600)' }}>{row.label}</span>
+                      <strong style={{ color: row.highlight ? 'var(--primary)' : 'var(--neutral-900)' }}>{row.value}</strong>
+                    </div>
+                  ))}
                 </div>
               </div>
 
+              {/* Ticket Breakdown */}
               <div style={{ border: '1px solid var(--neutral-100)', borderRadius: 12, padding: 20 }}>
-                <h4 style={{ marginBottom: 16, fontSize: 14 }}>Ticket Tier Efficiency</h4>
-                <div className="table-responsive">
-                  <table className="dashboard-table" style={{ fontSize: 12 }}>
-                    <thead><tr><th>Tier</th><th>Price</th><th>Sold</th><th>Revenue</th></tr></thead>
-                    <tbody>
-                      {selectedTickets.map((item) => (
-                        <tr key={item.ticketId}>
-                          <td>{item.ticketName}</td>
-                          <td>{formatMoney(item.price)}</td>
-                          <td>{item.soldQuantity}</td>
-                          <td style={{ fontWeight: 600 }}>{formatMoney(item.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <h4 style={{ marginBottom: 16, fontSize: 14, fontWeight: 700 }}>Ticket Tier Breakdown</h4>
+                {selectedTickets.length > 0 ? (
+                  <div className="table-responsive">
+                    <table className="dashboard-table" style={{ fontSize: 13 }}>
+                      <thead><tr><th>Tier</th><th>Price</th><th>Sold</th><th>Revenue</th></tr></thead>
+                      <tbody>
+                        {selectedTickets.map((t) => (
+                          <tr key={t.ticketId}>
+                            <td>{t.ticketName}</td>
+                            <td>{formatMoney(t.price)}</td>
+                            <td style={{ fontWeight: 700 }}>{t.soldQuantity}</td>
+                            <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{formatMoney(t.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: 20, color: 'var(--neutral-400)', fontSize: 13 }}>
+                    No ticket data available.
+                  </div>
+                )}
               </div>
             </div>
           </div>

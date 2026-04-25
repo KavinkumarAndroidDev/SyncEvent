@@ -529,7 +529,7 @@ export default function BookingPage() {
 
       {step === 'payment' && (
         <div className="detail-container" style={{ paddingTop: 28 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 40, alignItems: 'start' }}>
+          <div className="booking-payment-grid">
             <div>
               <button
                 onClick={() => setStep('participants')}

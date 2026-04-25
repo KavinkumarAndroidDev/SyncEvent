@@ -2,6 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../../../lib/axios';
 import Button from '../../../components/ui/Button';
+import OrgPageHeader from '../components/OrgPageHeader';
+import OrgToast from '../components/OrgToast';
+import { useToast } from '../components/orgHooks.jsx';
 
 const EMPTY_TICKET = {
   name: '',
@@ -29,8 +32,7 @@ export default function OrganizerCreateEvent() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [tickets, setTickets] = useState([{ ...EMPTY_TICKET }]);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success');
+  const { toast, showToast } = useToast();
 
   useEffect(() => {
     async function loadMetadata() {
@@ -42,8 +44,7 @@ export default function OrganizerCreateEvent() {
         setCategories(categoriesRes.data || []);
         setVenues(venuesRes.data || []);
       } catch (err) {
-        setMessageType('error');
-        setMessage(err.response?.data?.message || 'Failed to load form data.');
+        showToast(err.response?.data?.message || 'Failed to load form data.', 'error');
       }
     }
     loadMetadata();
@@ -69,8 +70,7 @@ export default function OrganizerCreateEvent() {
     e.preventDefault();
     
     if (totalCapacity <= 0) {
-      setMessageType('error');
-      setMessage('Total event capacity must be at least 1. Please add ticket tiers.');
+      showToast('Total event capacity must be at least 1. Please add ticket tiers.', 'error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -95,14 +95,12 @@ export default function OrganizerCreateEvent() {
           saleEndTime: item.saleEndTime,
         })),
       });
-      setMessageType('success');
-      setMessage('Event created successfully.');
+      showToast('Event created successfully.');
       setForm(EMPTY_FORM);
       setTickets([{ ...EMPTY_TICKET }]);
       navigate('/organizer/events');
     } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to create event.');
+      showToast(err.response?.data?.message || 'Failed to create event.', 'error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
@@ -111,12 +109,12 @@ export default function OrganizerCreateEvent() {
 
   return (
     <div style={{ padding: 40 }}>
-      <div className="view-header" style={{ marginBottom: 24 }}>
-        <h2 className="view-title">Create Event</h2>
-        <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Add complete event details and ticket setup before submitting for approval.</p>
-      </div>
+      <OrgPageHeader
+        title="Create Event"
+        subtitle="Add complete event details and ticket setup before submitting for approval."
+      />
 
-      {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 20 }}>{message}</div>}
+      <OrgToast msg={toast.msg} type={toast.type} />
 
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 20 }}>
         <div style={{ background: 'white', border: '1px solid var(--neutral-100)', borderRadius: 16, padding: 24 }}>

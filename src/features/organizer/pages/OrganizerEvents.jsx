@@ -6,8 +6,8 @@ import {
   canPublishEvent, 
   canOrganizerCancelEvent,
   canEditEvent,
-  getBadgeClass,
   isFutureEvent,
+  isEventActive,
   formatPercent
 } from '../utils/organizerHelpers';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
@@ -17,6 +17,11 @@ import AdminConfirmModal from '../../admin/components/AdminConfirmModal';
 import Modal from '../../../components/ui/Modal';
 import { Link } from 'react-router-dom';
 import Spinner from '../../../components/common/Spinner';
+import OrgPageHeader from '../components/OrgPageHeader';
+import OrgStatCard from '../components/OrgStatCard';
+import OrgToast from '../components/OrgToast';
+import OrgStatusBadge from '../components/OrgStatusBadge';
+import { useToast } from '../components/orgHooks.jsx';
 
 export default function OrganizerEvents() {
   const [events, setEvents] = useState([]);
@@ -26,27 +31,35 @@ export default function OrganizerEvents() {
   const [search, setSearch] = useState('');
   
   const [updating, setUpdating] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success');
-  
   const [confirmModal, setConfirmModal] = useState(null);
   const [manageEvent, setManageEvent] = useState(null);
-  const [manageTab, setManageTab] = useState('overview'); // overview, participants, tickets, announcements
+  const [manageTab, setManageTab] = useState('overview');
   const [hubData, setHubData] = useState({ participants: [], tickets: [], feedbacks: [], report: null });
   const [hubLoading, setHubLoading] = useState(false);
+  const { toast, showToast } = useToast();
+  const [eventReports, setEventReports] = useState({});
+  const [openActionId, setOpenActionId] = useState(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const [editingTicket, setEditingTicket] = useState(null);
+  const [newTicket, setNewTicket] = useState(null);
 
   const loadEvents = useCallback(async () => {
     try {
       setLoading(true);
       let query = `/events?size=500&sort=${sortFilter}`;
       if (statusFilter !== 'ALL') query += `&status=${statusFilter}`;
-      
-      const { data } = await axiosInstance.get(query);
-      setEvents(data.content || []);
+      const [eventsRes, reportsRes] = await Promise.all([
+        axiosInstance.get(query),
+        axiosInstance.get('/reports/events?size=500').catch(() => ({ data: { content: [] } }))
+      ]);
+      setEvents(eventsRes.data.content || []);
+      // Key by eventId (EventReportDTO field name)
+      const reportsMap = {};
+      (reportsRes.data?.content || []).forEach(r => { reportsMap[r.eventId] = r; });
+      setEventReports(reportsMap);
     } catch (err) {
       console.error(err);
-      setMessage('Failed to load events.');
-      setMessageType('error');
+      showToast('Failed to load events.', 'error');
     } finally {
       setLoading(false);
     }
@@ -59,16 +72,13 @@ export default function OrganizerEvents() {
   const handleStatusChange = async (id, newStatus) => {
     try {
       setUpdating(true);
-      setMessage('');
       await axiosInstance.patch(`/events/${id}/status`, { status: newStatus });
-      setMessageType('success');
-      setMessage(`Event status successfully updated to ${getEventStatusLabel(newStatus)}.`);
+      showToast(`Status updated to ${getEventStatusLabel(newStatus)}.`);
       setConfirmModal(null);
       if (manageEvent?.id === id) setManageEvent(prev => ({ ...prev, status: newStatus }));
       await loadEvents();
     } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to update event status.');
+      showToast(err.response?.data?.message || 'Failed to update event status.', 'error');
     } finally {
       setUpdating(false);
     }
@@ -86,29 +96,34 @@ export default function OrganizerEvents() {
     setManageEvent(event);
     setManageTab('overview');
     setHubLoading(true);
+    setOpenActionId(null);
     try {
+      // Participants: GET /events/{eventId}/participants returns Page<ParticipantResponse>
+      // Tickets: GET /events/{eventId}/tickets returns List<TicketResponse> (plain array)
+      // Feedbacks: GET /events/{eventId}/feedbacks
+      // Report: GET /reports/events/{eventId}
       const [partsRes, ticketsRes, feedbacksRes, reportRes] = await Promise.all([
-        axiosInstance.get(`/events/${event.id}/participants?size=500`).catch(() => ({ data: { content: [] } })),
+        axiosInstance.get(`/events/${event.id}/participants?size=200`).catch(() => ({ data: { content: [] } })),
         axiosInstance.get(`/events/${event.id}/tickets`).catch(() => ({ data: [] })),
-        axiosInstance.get(`/events/${event.id}/feedbacks?size=100`).catch(() => ({ data: [] })),
+        axiosInstance.get(`/events/${event.id}/feedbacks?size=100`).catch(() => ({ data: { content: [] } })),
         axiosInstance.get(`/reports/events/${event.id}`).catch(() => ({ data: null })),
       ]);
 
-      // Robust data normalization for participants
-      let participantsList = [];
-      if (Array.isArray(partsRes.data)) participantsList = partsRes.data;
-      else if (partsRes.data?.content) participantsList = partsRes.data.content;
-      else if (partsRes.data?.data?.content) participantsList = partsRes.data.data.content;
-      else if (partsRes.data?.data && Array.isArray(partsRes.data.data)) participantsList = partsRes.data.data;
+      // ParticipantController returns Page<ParticipantResponse> — use .content
+      const participantsList = partsRes.data?.content || (Array.isArray(partsRes.data) ? partsRes.data : []);
+      // TicketController returns List<TicketResponse> — plain array
+      const ticketsList = Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.content || []);
+      const feedbacksList = feedbacksRes.data?.content || (Array.isArray(feedbacksRes.data) ? feedbacksRes.data : []);
 
       setHubData({
         participants: participantsList,
-        tickets: ticketsRes.data?.content || ticketsRes.data || [],
-        feedbacks: feedbacksRes.data?.content || feedbacksRes.data || [],
+        tickets: ticketsList,
+        feedbacks: feedbacksList,
         report: reportRes.data
       });
     } catch (err) {
       console.error('Failed to load hub data', err);
+      showToast('Some event data could not be loaded.', 'error');
     } finally {
       setHubLoading(false);
     }
@@ -116,16 +131,27 @@ export default function OrganizerEvents() {
 
   const getTicketsSold = (item) => {
     if (!item) return 0;
-    if (hubData.report && manageEvent?.id === item?.id) {
-      return hubData.report.confirmedRegistrations || 0;
-    }
-    // Deep check for tickets sold in the event object
-    if (item.confirmedRegistrations !== undefined) return item.confirmedRegistrations;
-    if (item.ticketsSold !== undefined) return item.ticketsSold;
-    
-    if (!item.tickets) return 0;
-    return item.tickets.reduce((sum, t) => sum + ((t.totalQuantity || 0) - (t.availableQuantity || 0)), 0);
+    // eventReports is keyed by eventId (Long from backend)
+    const report = eventReports[item.id];
+    if (report) return Number(report.confirmedRegistrations || 0);
+    return 0;
   };
+
+  const getEventCapacity = (item) => {
+    if (!item) return '—';
+    const tickets = hubData.tickets;
+    if (manageEvent?.id === item.id && tickets.length) {
+      return tickets.reduce((s, t) => s + (t.totalQuantity || 0), 0);
+    }
+    return item.capacity || '—';
+  };
+
+  const eventsStats = useMemo(() => ({
+    total: events.length,
+    live: events.filter(e => e.status === 'PUBLISHED').length,
+    draft: events.filter(e => ['DRAFT', 'PENDING_APPROVAL'].includes(e.status)).length,
+    completed: events.filter(e => e.status === 'COMPLETED').length,
+  }), [events]);
 
   const filteredEvents = useMemo(() => {
     let list = [...events];
@@ -134,52 +160,80 @@ export default function OrganizerEvents() {
     }
     
     if (sortFilter === 'status,asc') {
-      list.sort((a, b) => a.status.localeCompare(b.status));
+      list.sort((a, b) => (a.status || '').localeCompare(b.status || ''));
     }
     
     return list;
   }, [events, search, sortFilter]);
 
   const exportData = () => {
-    exportCsv('events-list.csv', ['ID', 'Title', 'Date', 'Status', 'Tickets Sold'], filteredEvents.map(e => [
-      e.id, e.title, e.startTime, e.status, getTicketsSold(e)
-    ]));
+    exportCsv('events-list.csv',
+      ['ID', 'Title', 'Venue', 'City', 'Category', 'Start Date', 'Status', 'Tickets Sold', 'Net Revenue'],
+      filteredEvents.map(e => {
+        const r = eventReports[e.id];
+        return [
+          e.id, e.title,
+          e.venueName || e.venue?.name || '',
+          e.city || e.venue?.city || '',
+          e.categoryName || e.category?.name || '',
+          e.startTime,
+          e.status,
+          getTicketsSold(e),
+          r ? Number(r.netRevenue || 0).toFixed(2) : '0.00'
+        ];
+      })
+    );
   };
 
   const sendAnnouncement = async (e) => {
     e.preventDefault();
     const subject = e.target.subject.value;
-    const message = e.target.message.value;
-    if (!subject || !message) return;
-    
+    const msg = e.target.message.value;
+    if (!subject || !msg) return;
     try {
       setUpdating(true);
-      await axiosInstance.post(`/events/${manageEvent.id}/notifications`, { subject, message, isSystem: false });
-      alert('Your update has been sent to all registered attendees!');
+      await axiosInstance.post(`/events/${manageEvent.id}/notifications`, { subject, message: msg, isSystem: false });
+      showToast('Update sent to all registered attendees!');
       e.target.reset();
     } catch (err) {
-      alert('Failed to send the update.');
+      showToast('Failed to send the update. Please try again.', 'error');
     } finally {
       setUpdating(false);
     }
   };
 
-  return (
-    <div style={{ padding: 40 }}>
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h2 className="view-title">Manage Events</h2>
-          <p style={{ color: 'var(--neutral-400)', fontSize: 14, marginTop: 6 }}>Create, edit, and track your events from one central place.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <Button variant="secondary" onClick={exportData}>Export Events</Button>
-          <Link to="/organizer/create-event" style={{ textDecoration: 'none' }}>
-            <Button variant="primary">+ Create New Event</Button>
-          </Link>
-        </div>
-      </div>
+  // Shared dropdown item style
+  const menuItemStyle = {
+    display: 'flex', alignItems: 'center', gap: 8,
+    width: '100%', textAlign: 'left', padding: '9px 14px',
+    background: 'none', border: 'none', borderRadius: 8, fontSize: 13,
+    fontWeight: 500, cursor: 'pointer', color: 'var(--neutral-700)',
+    transition: 'background 0.15s',
+  };
 
-      {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`}>{message}</div>}
+  return (
+    <div style={{ padding: 40 }} onClick={() => setOpenActionId(null)}>
+      <OrgPageHeader
+        title="My Events"
+        subtitle="Create, manage, and track all your events in one place."
+        actions={
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Button variant="secondary" onClick={exportData}>Export Events</Button>
+            <Link to="/organizer/create-event" style={{ textDecoration: 'none' }}>
+              <Button variant="primary">+ Create New Event</Button>
+            </Link>
+          </div>
+        }
+      />
+
+      <OrgToast msg={toast.msg} type={toast.type} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <OrgStatCard label="Total Events"     value={eventsStats.total}     color="#6366f1" />
+        <OrgStatCard label="Live Now"         value={eventsStats.live}      color="#10b981" />
+        <OrgStatCard label="Drafts / Pending" value={eventsStats.draft}     color="#f59e0b" />
+        <OrgStatCard label="Completed"        value={eventsStats.completed} color="var(--neutral-300)" />
+      </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
         <input 
@@ -237,37 +291,79 @@ export default function OrganizerEvents() {
                   <td><div style={{ fontWeight: 600 }}>{event.title}</div></td>
                   <td style={{ fontSize: 13 }}>{formatDateTime(event.startTime)}</td>
                   <td>
-                    <span className={getBadgeClass(event.status)}>
-                      {getEventStatusLabel(event.status)}
-                    </span>
-                    {!isFuture && event.status !== 'COMPLETED' && <div style={{ fontSize: 10, color: 'var(--neutral-400)', marginTop: 4 }}>PAST EVENT</div>}
+                    <OrgStatusBadge status={event.status} />
+                    {!isFutureEvent(event.startTime) && !isEventActive(event.startTime, event.endTime) && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && (
+                      <div style={{ fontSize: 10, color: 'var(--neutral-400)', marginTop: 4 }}>PAST EVENT</div>
+                    )}
                   </td>
                   <td style={{ fontSize: 13 }}>
                     <div style={{ fontWeight: 600 }}>{ticketsSold} Tickets Sold</div>
                     <div style={{ fontSize: 11, color: 'var(--neutral-400)' }}>Capacity: {event.capacity}</div>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      {canSubmitForApproval(event.status, event.startTime) && (
-                        <Button variant="secondary" onClick={() => askStatus(event, 'PENDING_APPROVAL')} disabled={updating}>Submit</Button>
-                      )}
-                      
-                      {canPublishEvent(event.status, event.startTime) && (
-                        <Button variant="primary" onClick={() => askStatus(event, 'PUBLISHED')} disabled={updating}>Publish</Button>
-                      )}
-
-                      {isFuture && canEditEvent(event.status) && (
-                        <Link to={`/organizer/events/edit/${event.id}`} style={{ textDecoration: 'none' }}>
-                          <Button variant="table">Edit</Button>
-                        </Link>
-                      )}
-
-                      <Button variant="table" onClick={() => openManageHub(event)}>
-                        {isFuture ? 'Manage' : 'Performance'}
-                      </Button>
-                      
-                      {isFuture && canOrganizerCancelEvent(event.status, event.startTime) && (
-                        <Button variant="table" style={{ color: 'var(--error)' }} onClick={() => askStatus(event, 'CANCELLED')} disabled={updating}>Cancel</Button>
+                  <td style={{ textAlign: 'right', position: 'relative' }}>
+                    {/* Single action button → dropdown */}
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setDropdownPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+                          setOpenActionId(openActionId === event.id ? null : event.id);
+                        }}
+                        style={{
+                          padding: '6px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)',
+                          background: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 6, color: 'var(--neutral-700)'
+                        }}
+                      >
+                        Actions
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </button>
+                      {openActionId === event.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: 'fixed',
+                            top: dropdownPos.top,
+                            right: dropdownPos.right,
+                            zIndex: 9999,
+                            background: 'white', border: '1px solid var(--neutral-100)',
+                            borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+                            minWidth: 190, padding: 6,
+                          }}>
+                          <button onClick={() => { openManageHub(event); }} style={menuItemStyle}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            {isFuture ? 'Manage' : 'Performance'}
+                          </button>
+                          {isFuture && canEditEvent(event.status) && (
+                            <Link to={`/organizer/events/edit/${event.id}`} style={{ textDecoration: 'none' }}>
+                              <button style={menuItemStyle}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                Edit Event
+                              </button>
+                            </Link>
+                          )}
+                          {canSubmitForApproval(event.status, event.startTime) && (
+                            <button onClick={() => { askStatus(event, 'PENDING_APPROVAL'); setOpenActionId(null); }} style={menuItemStyle}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                              Submit for Review
+                            </button>
+                          )}
+                          {canPublishEvent(event.status, event.startTime) && (
+                            <button onClick={() => { askStatus(event, 'PUBLISHED'); setOpenActionId(null); }} style={{ ...menuItemStyle, color: '#10b981', fontWeight: 700 }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                              Go Live
+                            </button>
+                          )}
+                          {isFuture && canOrganizerCancelEvent(event.status, event.startTime) && (
+                            <button onClick={() => { askStatus(event, 'CANCELLED'); setOpenActionId(null); }} style={{ ...menuItemStyle, color: '#ef4444' }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                              Cancel Event
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </td>
@@ -293,10 +389,10 @@ export default function OrganizerEvents() {
 
       <Modal
         isOpen={!!manageEvent}
-        title={`Event Command Center: ${manageEvent?.title}`}
+        title={`Event Details: ${manageEvent?.title}`}
         onClose={() => setManageEvent(null)}
         maxWidth="1000px"
-        actions={<Button variant="table" onClick={() => setManageEvent(null)}>Close Hub</Button>}
+        actions={<Button variant="table" onClick={() => setManageEvent(null)}>Close</Button>}
       >
         <div style={{ display: 'flex', gap: 24 }}>
           {/* Hub Sidebar */}
@@ -334,24 +430,25 @@ export default function OrganizerEvents() {
                 {manageTab === 'overview' && (
                   <div style={{ display: 'grid', gap: 24 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                      <div className="admin-stat-card">
-                        <div className="admin-stat-label">Tickets Sold</div>
-                        <div className="admin-stat-value">{getTicketsSold(manageEvent)} / {manageEvent?.capacity || 0}</div>
-                      </div>
-                      <div className="admin-stat-card">
-                        <div className="admin-stat-label">Event Revenue</div>
-                        <div className="admin-stat-value" style={{ color: 'var(--primary)' }}>{formatMoney(hubData.report?.netRevenue || 0)}</div>
-                      </div>
-                      <div className="admin-stat-card">
-                        <div className="admin-stat-label">Arrival Rate</div>
-                        <div className="admin-stat-value">{formatPercent(hubData.report?.attendanceRate || 0)}</div>
-                      </div>
+                      <OrgStatCard
+                        label="Tickets Sold"
+                        value={`${Number(hubData.report?.confirmedRegistrations || 0)} / ${hubData.tickets.reduce((s, t) => s + (t.totalQuantity || 0), 0) || manageEvent?.capacity || 0}`}
+                      />
+                      <OrgStatCard
+                        label="Event Revenue"
+                        value={formatMoney(hubData.report?.netRevenue || 0)}
+                        color="var(--primary)"
+                      />
+                      <OrgStatCard
+                        label="Arrival Rate"
+                        value={formatPercent(hubData.report?.attendanceRate || 0)}
+                      />
                     </div>
                     <div style={{ background: 'var(--neutral-50)', padding: 20, borderRadius: 12 }}>
                       <h4 style={{ marginBottom: 12, fontSize: 15, fontWeight: 700 }}>Status & Quick Actions</h4>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div>
-                          <span className={getBadgeClass(manageEvent?.status)}>{getEventStatusLabel(manageEvent?.status)}</span>
+                          <OrgStatusBadge status={manageEvent?.status} />
                           <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginTop: 8 }}>Scheduled for {formatDateTime(manageEvent?.startTime)}</div>
                         </div>
                         <div style={{ display: 'flex', gap: 10 }}>
@@ -386,7 +483,7 @@ export default function OrganizerEvents() {
                               <td style={{ fontSize: 13 }}>{p.phone}</td>
                               <td>
                                 <span className={`badge badge-${p.status === 'CHECKED_IN' ? 'completed' : 'active'}`}>
-                                  {p.status?.replace('_', ' ')}
+                                  {(p.status || '').replaceAll('_', ' ')}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right' }}>
@@ -419,27 +516,117 @@ export default function OrganizerEvents() {
                 {manageTab === 'tickets' && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                      <h4 style={{ margin: 0 }}>Ticket Tiers</h4>
-                      {canEditEvent(manageEvent.status) && (
-                        <Link to={`/organizer/events/edit/${manageEvent.id}`} style={{ textDecoration: 'none' }}>
-                          <Button variant="table">Adjust Tiers</Button>
-                        </Link>
+                      <h4 style={{ margin: 0 }}>Ticket Tiers ({hubData.tickets.length})</h4>
+                      {canEditEvent(manageEvent?.status) && !newTicket && (
+                        <button
+                          onClick={() => setNewTicket({ name: '', price: '', totalQuantity: '' })}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'transparent', color: 'var(--primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                          Add Tier
+                        </button>
                       )}
                     </div>
+
+                    {newTicket && (
+                      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 12, padding: 16, marginBottom: 16, display: 'grid', gap: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>New Ticket Tier</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                          <input className="form-input" placeholder="Tier name" value={newTicket.name} onChange={e => setNewTicket(p => ({ ...p, name: e.target.value }))} />
+                          <input className="form-input" placeholder="Price (₹)" type="number" min="0" value={newTicket.price} onChange={e => setNewTicket(p => ({ ...p, price: e.target.value }))} />
+                          <input className="form-input" placeholder="Total quantity" type="number" min="1" value={newTicket.totalQuantity} onChange={e => setNewTicket(p => ({ ...p, totalQuantity: e.target.value }))} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button onClick={() => setNewTicket(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                          <button onClick={async () => {
+                            if (!newTicket.name || !newTicket.totalQuantity) return;
+                            try {
+                              setUpdating(true);
+                              const res = await axiosInstance.post(`/events/${manageEvent.id}/tickets`, {
+                                name: newTicket.name,
+                                price: Number(newTicket.price) || 0,
+                                totalQuantity: Number(newTicket.totalQuantity),
+                              });
+                              setHubData(prev => ({ ...prev, tickets: [...prev.tickets, res.data] }));
+                              setNewTicket(null);
+                              showToast('Ticket tier added.');
+                            } catch (err) {
+                              showToast(err.response?.data?.message || 'Failed to add ticket tier.', 'error');
+                            } finally { setUpdating(false); }
+                          }} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save Tier</button>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'grid', gap: 12 }}>
                       {hubData.tickets.map(t => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 16, border: '1px solid var(--neutral-100)', borderRadius: 12 }}>
-                          <div>
-                            <div style={{ fontWeight: 700 }}>{t.name}</div>
-                            <div style={{ fontSize: 13, color: 'var(--neutral-400)' }}>{t.availableQuantity} of {t.totalQuantity} tickets left</div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 18 }}>{formatMoney(t.price)}</div>
-                            <span className={`badge badge-${t.status === 'ACTIVE' ? 'completed' : 'cancelled'}`} style={{ fontSize: 10 }}>{t.status}</span>
-                          </div>
+                        <div key={t.id} style={{ border: '1px solid var(--neutral-100)', borderRadius: 12, overflow: 'hidden' }}>
+                          {editingTicket?.id === t.id ? (
+                            <div style={{ padding: 16, background: '#fafafa', display: 'grid', gap: 10 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                                <input className="form-input" value={editingTicket.name} onChange={e => setEditingTicket(p => ({ ...p, name: e.target.value }))} placeholder="Name" />
+                                <input className="form-input" type="number" value={editingTicket.price} onChange={e => setEditingTicket(p => ({ ...p, price: e.target.value }))} placeholder="Price" />
+                                <input className="form-input" type="number" value={editingTicket.totalQuantity} onChange={e => setEditingTicket(p => ({ ...p, totalQuantity: e.target.value }))} placeholder="Quantity" />
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                <button onClick={() => setEditingTicket(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                                <button onClick={async () => {
+                                  try {
+                                    setUpdating(true);
+                                    const res = await axiosInstance.put(`/tickets/${t.id}`, {
+                                      name: editingTicket.name,
+                                      price: Number(editingTicket.price),
+                                      totalQuantity: Number(editingTicket.totalQuantity),
+                                    });
+                                    setHubData(prev => ({ ...prev, tickets: prev.tickets.map(tk => tk.id === t.id ? res.data : tk) }));
+                                    setEditingTicket(null);
+                                    showToast('Ticket tier updated.');
+                                  } catch (err) {
+                                    showToast(err.response?.data?.message || 'Failed to update.', 'error');
+                                  } finally { setUpdating(false); }
+                                }} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px' }}>
+                              <div>
+                                <div style={{ fontWeight: 700 }}>{t.name}</div>
+                                <div style={{ fontSize: 13, color: 'var(--neutral-400)', marginTop: 2 }}>
+                                  {(t.totalQuantity || 0) - (t.availableQuantity || 0)} sold · {t.availableQuantity} remaining of {t.totalQuantity}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 17 }}>{formatMoney(t.price)}</div>
+                                  <span className={`badge badge-${t.status === 'ACTIVE' ? 'completed' : 'cancelled'}`} style={{ fontSize: 10 }}>{t.status}</span>
+                                </div>
+                                {canEditEvent(manageEvent?.status) && (
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => setEditingTicket({ ...t })} style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                      Edit
+                                    </button>
+                                    <button onClick={async () => {
+                                      try {
+                                        setUpdating(true);
+                                        const newStatus = t.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+                                        const res = await axiosInstance.patch(`/tickets/${t.id}/status`, { status: newStatus });
+                                        setHubData(prev => ({ ...prev, tickets: prev.tickets.map(tk => tk.id === t.id ? res.data : tk) }));
+                                        showToast(`Ticket ${newStatus === 'ACTIVE' ? 'activated' : 'suspended'}.`);
+                                      } catch (err) {
+                                        showToast('Failed to update ticket status.', 'error');
+                                      } finally { setUpdating(false); }
+                                    }} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${t.status === 'ACTIVE' ? '#fca5a5' : '#86efac'}`, background: 'white', fontSize: 12, cursor: 'pointer', color: t.status === 'ACTIVE' ? '#ef4444' : '#16a34a' }}>
+                                      {t.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
-                      {!hubData.tickets.length && <div style={{ textAlign: 'center', padding: 32, color: 'var(--neutral-400)' }}>No ticket tiers created.</div>}
+                      {!hubData.tickets.length && <div style={{ textAlign: 'center', padding: 32, color: 'var(--neutral-400)' }}>No ticket tiers created yet.</div>}
                     </div>
                   </div>
                 )}

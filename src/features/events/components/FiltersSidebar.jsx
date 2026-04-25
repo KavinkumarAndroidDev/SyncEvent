@@ -1,4 +1,8 @@
+import { useState } from 'react';
+
 export default function FiltersSidebar({ categories, venues, filters, onFilterChange, onClear }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
   // Extract unique cities from venues
   const cities = [...new Set(venues.map(v => v.city))].filter(Boolean);
 
@@ -32,11 +36,22 @@ export default function FiltersSidebar({ categories, venues, filters, onFilterCh
   };
 
   return (
-    <div className="filter-sidebar" style={{ background: 'white', padding: '24px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Filters</h3>
-        <button onClick={onClear} className="btn-link" style={{ padding: 0, fontSize: '13px', color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }}>Clear All</button>
-      </div>
+    <div>
+      <button 
+        className="filter-toggle-btn"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
+          <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>
+        </svg>
+        {isOpen ? 'Hide Filters' : 'Show Filters'}
+      </button>
+
+      <div className={`filter-sidebar-content ${isOpen ? 'is-open' : ''}`}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Filters</h3>
+          <button onClick={onClear} className="btn-link" style={{ padding: 0, fontSize: '13px', color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }}>Clear All</button>
+        </div>
 
       {/* Sort */}
       <div className="filter-section" style={{ marginBottom: '24px' }}>
@@ -112,6 +127,7 @@ export default function FiltersSidebar({ categories, venues, filters, onFilterCh
       >
         Apply Filters
       </button>
+      </div>
     </div>
   );
-}
+}
