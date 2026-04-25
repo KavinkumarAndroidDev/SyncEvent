@@ -23,3 +23,8 @@ BACKEND_CODE_COPY/
 *.njsproj
 *.sln
 *.sw?
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
