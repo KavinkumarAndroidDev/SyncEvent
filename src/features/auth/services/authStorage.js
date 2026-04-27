@@ -1,13 +1,15 @@
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 
-export function getAccessToken() {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
-}
+export const getAccessToken = () => {
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  return token ? token : null;
+};
 
-export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
+export const getRefreshToken = () => {
+  const token = localStorage.getItem(REFRESH_TOKEN_KEY);
+  return token ? token : null;
+};
 
 export function setAuthTokens(accessToken, refreshToken) {
   if (accessToken) {
