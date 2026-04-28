@@ -62,8 +62,8 @@ export default function OrganizerProfile() {
   };
 
   const OrgSection = (
-    <div style={CARD}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
+    <div className="profile-card-box" style={CARD}>
+      <div className="profile-card-head" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
         <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg, #10b981, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
@@ -96,7 +96,7 @@ export default function OrganizerProfile() {
         <Spinner label="Loading organization..." />
       ) : isEditing ? (
         <div style={{ display: 'grid', gap: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="org-profile-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div>
               <label style={FIELD_LABEL}>Organization Name</label>
               <input className="form-input" value={editData.organizationName || ''} onChange={e => setEditData(p => ({ ...p, organizationName: e.target.value }))} />
@@ -106,7 +106,7 @@ export default function OrganizerProfile() {
               <input className="form-input" placeholder="https://example.com" value={editData.website || ''} onChange={e => setEditData(p => ({ ...p, website: e.target.value }))} />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="org-profile-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div>
               <label style={FIELD_LABEL}>Instagram Handle</label>
               <input className="form-input" placeholder="@yourorg" value={editData.instagram || ''} onChange={e => setEditData(p => ({ ...p, instagram: e.target.value }))} />
@@ -125,13 +125,13 @@ export default function OrganizerProfile() {
               onChange={e => setEditData(p => ({ ...p, description: e.target.value, bio: e.target.value }))}
             />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+          <div className="profile-action-row" style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
             <Button variant="secondary" onClick={() => { setIsEditing(false); setEditData(profile || {}); }}>Cancel</Button>
             <Button onClick={() => setShowConfirm(true)}>Save Changes</Button>
           </div>
         </div>
       ) : profile ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div className="org-profile-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
           {[
             { label: 'Organization', value: profile.organizationName },
             { label: 'Website', value: profile.website, isLink: true },

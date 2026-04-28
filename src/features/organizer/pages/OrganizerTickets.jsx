@@ -4,10 +4,20 @@ import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
-import { getBadgeClass, getEventStatusLabel, getTicketSold, toDateTimeInput, isFutureEvent } from '../utils/organizerHelpers';
+import { getTicketSold, toDateTimeInput, isFutureEvent, isEventActive } from '../utils/organizerHelpers';
 import { exportCsv } from '../../admin/utils/adminUtils';
 
 const EMPTY_FORM = { name: '', price: '', totalQuantity: '', saleStartTime: '', saleEndTime: '' };
+
+function getTicketDisplayStatus(item) {
+  const now = new Date();
+  const start = item.saleStartTime ? new Date(item.saleStartTime) : null;
+  const end = item.saleEndTime ? new Date(item.saleEndTime) : null;
+  if (item.status !== 'ACTIVE') return 'Inactive';
+  if (start && now < start) return 'Upcoming';
+  if (end && now > end) return 'Ended';
+  return 'Active';
+}
 
 export default function OrganizerTickets() {
   const [events, setEvents] = useState([]);
@@ -62,6 +72,10 @@ export default function OrganizerTickets() {
 
   const selectedEvent = useMemo(() => events.find((item) => String(item.id) === String(selectedEventId)), [events, selectedEventId]);
   const isFuture = useMemo(() => isFutureEvent(selectedEvent?.startTime), [selectedEvent]);
+  const isOngoing = useMemo(() => isEventActive(selectedEvent?.startTime, selectedEvent?.endTime), [selectedEvent]);
+  const selectedStatus = String(selectedEvent?.status || '').toUpperCase();
+  const canManageTickets = isFuture && selectedStatus !== 'COMPLETED' && selectedStatus !== 'CANCELLED';
+  const quantityLocked = ['PUBLISHED', 'APPROVED', 'COMPLETED'].includes(selectedStatus);
 
   const stats = useMemo(() => {
     const totalSold = tickets.reduce((sum, item) => sum + getTicketSold(item), 0);
@@ -112,11 +126,19 @@ export default function OrganizerTickets() {
 
   async function saveTicket() {
     try {
+      if (!canManageTickets) {
+        showToast('Tickets cannot be changed for completed or ongoing events.', 'error');
+        return;
+      }
+      if (Number(form.price) < 1) {
+        showToast('Ticket price must be at least ₹1.', 'error');
+        return;
+      }
       setSaving(true);
       if (editingTicket) {
         await axiosInstance.put(`/tickets/${editingTicket.id}`, {
           price: Number(form.price),
-          totalQuantity: Number(form.totalQuantity),
+          totalQuantity: quantityLocked ? Number(editingTicket.totalQuantity) : Number(form.totalQuantity),
           saleStartTime: form.saleStartTime,
           saleEndTime: form.saleEndTime,
         });
@@ -144,6 +166,11 @@ export default function OrganizerTickets() {
     const item = showConfirmToggle;
     if (!item) return;
     try {
+      if (!canManageTickets) {
+        showToast('Tickets cannot be activated or deactivated for completed or ongoing events.', 'error');
+        setShowConfirmToggle(null);
+        return;
+      }
       setSaving(true);
       const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
       await axiosInstance.patch(`/tickets/${item.id}/status`, { status: nextStatus });
@@ -171,7 +198,7 @@ export default function OrganizerTickets() {
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <Button variant="secondary" onClick={exportData}>Export CSV</Button>
-          {isFuture && <Button onClick={openCreate} disabled={!selectedEventId}>+ Add Ticket</Button>}
+          {canManageTickets && <Button onClick={openCreate} disabled={!selectedEventId}>+ Add Ticket</Button>}
         </div>
       </div>
 
@@ -219,9 +246,9 @@ export default function OrganizerTickets() {
       </div>
 
       {/* Past event warning */}
-      {!isFuture && selectedEvent && (
+      {(!canManageTickets || isOngoing) && selectedEvent && (
         <div className="alert alert-warning" style={{ marginBottom: 20 }}>
-          This event is in the past. Ticket management is view-only.
+          This event is completed or ongoing. Ticket management is view-only.
         </div>
       )}
 
@@ -264,11 +291,11 @@ export default function OrganizerTickets() {
                 </td>
                 <td>
                   <span className={`badge badge-${item.status === 'ACTIVE' ? 'completed' : 'cancelled'}`}>
-                    {item.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                    {getTicketDisplayStatus(item)}
                   </span>
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  {isFuture ? (
+                  {canManageTickets ? (
                     <div className="row-actions" style={{ justifyContent: 'flex-end', gap: 8 }}>
                       <Button variant="table" onClick={() => openEdit(item)}>Edit</Button>
                       <Button
@@ -301,6 +328,7 @@ export default function OrganizerTickets() {
         isOpen={showModal}
         title={editingTicket ? `Edit: ${editingTicket.name}` : 'Add New Ticket Tier'}
         onClose={() => setShowModal(false)}
+        maxWidth="620px"
         actions={
           <>
             <Button variant="table" onClick={() => setShowModal(false)}>Cancel</Button>
@@ -318,11 +346,12 @@ export default function OrganizerTickets() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label className="form-label">Price (₹) <span style={{ color: 'var(--error)' }}>*</span></label>
-              <input className="form-input" type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+              <input className="form-input" type="number" min="1" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
             </div>
             <div>
               <label className="form-label">Total Quantity <span style={{ color: 'var(--error)' }}>*</span></label>
-              <input className="form-input" type="number" min="1" value={form.totalQuantity} onChange={(e) => setForm({ ...form, totalQuantity: e.target.value })} />
+              <input className="form-input" type="number" min="1" value={form.totalQuantity} disabled={editingTicket && quantityLocked} onChange={(e) => setForm({ ...form, totalQuantity: e.target.value })} />
+              {editingTicket && quantityLocked && <p style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Quantity cannot be changed for published or approved events.</p>}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

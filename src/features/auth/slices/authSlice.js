@@ -82,6 +82,14 @@ export const verifyOtp = createAsyncThunk('auth/verifyOtp', async ({ identifier,
   }
 });
 
+export const resetPassword = createAsyncThunk('auth/resetPassword', async ({ identifier, otp, newPassword }, { rejectWithValue }) => {
+  try {
+    await axiosInstance.post('/auth/reset-password', { identifier, otp, newPassword });
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to reset password');
+  }
+});
+
 export const logoutUser = createAsyncThunk('auth/logoutUser', async (_, { rejectWithValue }) => {
   try {
     await axiosInstance.post('/auth/logout');
@@ -165,6 +173,15 @@ const authSlice = createSlice({
         state.initialized = true;
       })
       .addCase(verifyOtp.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(resetPassword.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(resetPassword.fulfilled, (state) => {
+        state.loading = false;
+        state.otpSent = false;
+      })
+      .addCase(resetPassword.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

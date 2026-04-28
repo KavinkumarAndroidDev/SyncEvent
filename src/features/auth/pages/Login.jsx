@@ -157,6 +157,11 @@ export default function Login() {
               onChange={handleChange}
               error={errors.password}
             />
+            <div style={{ textAlign: 'right', marginTop: -8 }}>
+              <Link to="/forgot-password" style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+                Forgot password?
+              </Link>
+            </div>
             <Button type="submit" loading={loading}>Login</Button>
           </form>
         )}

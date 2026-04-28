@@ -54,6 +54,10 @@ export default function OrganizerCreateEvent() {
     return tickets.reduce((sum, t) => sum + Number(t.totalQuantity || 0), 0);
   }, [tickets]);
 
+  const selectedVenue = useMemo(() => {
+    return venues.find((item) => String(item.id) === String(form.venueId));
+  }, [venues, form.venueId]);
+
   function updateTicket(index, name, value) {
     setTickets((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, [name]: value } : item));
   }
@@ -71,6 +75,33 @@ export default function OrganizerCreateEvent() {
     
     if (totalCapacity <= 0) {
       showToast('Total event capacity must be at least 1. Please add ticket tiers.', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (selectedVenue?.capacity && totalCapacity > Number(selectedVenue.capacity)) {
+      showToast(`Total ticket quantity cannot be more than venue capacity (${selectedVenue.capacity}).`, 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const now = new Date();
+    const start = new Date(form.startTime);
+    const end = new Date(form.endTime);
+    if (start <= now) {
+      showToast('Start time must be after current time.', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (end <= start) {
+      showToast('End time must be after start time.', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const invalidTicket = tickets.find((item) => Number(item.price) < 1);
+    if (invalidTicket) {
+      showToast('Ticket price must be at least ₹1.', 'error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -115,6 +146,12 @@ export default function OrganizerCreateEvent() {
       />
 
       <OrgToast msg={toast.msg} type={toast.type} />
+
+      {selectedVenue?.capacity && totalCapacity > Number(selectedVenue.capacity) && (
+        <div style={{ background: '#fee2e2', border: '1px solid #ef4444', color: '#b91c1c', padding: '12px 16px', borderRadius: 12, marginBottom: 20, fontSize: 14, fontWeight: 600 }}>
+          Warning: Total ticket quantity ({totalCapacity}) exceeds the selected venue's capacity ({selectedVenue.capacity})!
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 20 }}>
         <div style={{ background: 'white', border: '1px solid var(--neutral-100)', borderRadius: 16, padding: 24 }}>
@@ -161,7 +198,7 @@ export default function OrganizerCreateEvent() {
             <div>
               <label className="form-label">Calculated Overall Capacity</label>
               <input className="form-input" type="number" value={totalCapacity} disabled style={{ background: 'var(--neutral-50)', fontWeight: 700, color: 'var(--primary)' }} />
-              <p style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Sum of all ticket tier quantities.</p>
+              <p style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 4 }}>Sum of all ticket tier quantities{selectedVenue?.capacity ? ` / venue capacity ${selectedVenue.capacity}` : ''}.</p>
             </div>
           </div>
         </div>
@@ -181,7 +218,7 @@ export default function OrganizerCreateEvent() {
                   </div>
                   <div>
                     <label className="form-label">Price (₹) <span style={{ color: 'var(--error)' }}>*</span></label>
-                    <input className="form-input" type="number" min="0" value={ticket.price} onChange={(e) => updateTicket(index, 'price', e.target.value)} placeholder="0 for Free" required />
+                    <input className="form-input" type="number" min="1" value={ticket.price} onChange={(e) => updateTicket(index, 'price', e.target.value)} placeholder="Minimum ₹1" required />
                   </div>
                   <div>
                     <label className="form-label">Quantity <span style={{ color: 'var(--error)' }}>*</span></label>

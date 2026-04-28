@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import axiosInstance from '../../../lib/axios';
 
 export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -20,11 +22,19 @@ export default function Contact() {
     return errs;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    setSubmitted(true);
+    try {
+      setSending(true);
+      await axiosInstance.post('/contact', form);
+      setSubmitted(true);
+    } catch (err) {
+      setErrors({ message: err.response?.data?.message || 'Failed to send message. Please try again.' });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -75,7 +85,7 @@ export default function Contact() {
                     <textarea className={`form-input contact-textarea ${errors.message ? 'input-error' : ''}`} name="message" rows={5} placeholder="Tell us about your query..." value={form.message} onChange={handleChange} />
                     {errors.message && <span className="field-error">{errors.message}</span>}
                   </div>
-                  <button type="submit" className="btn-submit">Send Message</button>
+                  <button type="submit" className="btn-submit" disabled={sending}>{sending ? 'Sending...' : 'Send Message'}</button>
                 </form>
               )}
             </div>

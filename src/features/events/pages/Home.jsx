@@ -113,7 +113,7 @@ export default function Home() {
             Find &amp; Book <span className="hero-accent">Amazing Events</span> Near You
           </h1>
           <p className="hero-sub">Music, workshops, sports, food and more — all in one place.</p>
-          <div className="hero-actions">
+          <div className={`hero-actions ${user ? 'hero-actions-logged' : ''}`}>
             <Link to="/events" className="btn-hero">Explore Events</Link>
             {!user && <Link to="/register/organizer" className="btn-hero-outline">Become an Organizer</Link>}
           </div>

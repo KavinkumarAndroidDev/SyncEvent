@@ -18,6 +18,10 @@ export default function FiltersSidebar({ categories, venues, filters, onFilterCh
     onFilterChange({ sort });
   };
 
+  const handlePriceChange = (name, value) => {
+    onFilterChange({ [name]: value });
+  };
+
   const sectionLabelStyle = {
     display: 'block',
     fontSize: '13px',
@@ -81,6 +85,28 @@ export default function FiltersSidebar({ categories, venues, filters, onFilterCh
               onChange={() => handleSortChange('price,desc')} 
             /> Price (High to Low)
           </label>
+        </div>
+      </div>
+
+      <div className="filter-section" style={{ marginBottom: '24px' }}>
+        <span style={sectionLabelStyle}>Price Range</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <input
+            className="form-input"
+            type="number"
+            min="0"
+            placeholder="Min"
+            value={filters.minPrice || ''}
+            onChange={(e) => handlePriceChange('minPrice', e.target.value)}
+          />
+          <input
+            className="form-input"
+            type="number"
+            min="0"
+            placeholder="Max"
+            value={filters.maxPrice || ''}
+            onChange={(e) => handlePriceChange('maxPrice', e.target.value)}
+          />
         </div>
       </div>
 

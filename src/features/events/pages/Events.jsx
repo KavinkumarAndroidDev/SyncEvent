@@ -21,6 +21,8 @@ export default function Events() {
     categoryId: queryCategoryId,
     city: searchParams.get('city') || '',
     venueId: searchParams.get('venueId') || '',
+    minPrice: searchParams.get('minPrice') || '',
+    maxPrice: searchParams.get('maxPrice') || '',
     sort: 'startTime,asc'
   });
 
@@ -32,6 +34,8 @@ export default function Events() {
       categoryId: (filters.categoryId || queryCategoryId) || undefined,
       venueId: filters.venueId || undefined,
       city: filters.city || undefined,
+      minPrice: filters.minPrice || undefined,
+      maxPrice: filters.maxPrice || undefined,
       sort: filters.sort
     };
     dispatch(fetchEvents(params));
@@ -43,8 +47,10 @@ export default function Events() {
     if (filters.categoryId) nextParams.categoryId = filters.categoryId;
     if (filters.city) nextParams.city = filters.city;
     if (filters.venueId) nextParams.venueId = filters.venueId;
+    if (filters.minPrice) nextParams.minPrice = filters.minPrice;
+    if (filters.maxPrice) nextParams.maxPrice = filters.maxPrice;
     setSearchParams(nextParams, { replace: true });
-  }, [search, filters.categoryId, filters.city, filters.venueId, setSearchParams]);
+  }, [search, filters.categoryId, filters.city, filters.venueId, filters.minPrice, filters.maxPrice, setSearchParams]);
 
   return (
     <main>
@@ -72,7 +78,7 @@ export default function Events() {
                 }}
                 onClear={() => {
                   setPage(0);
-                  setFilters({ categoryId: '', city: '', venueId: '', sort: 'startTime,asc' });
+                  setFilters({ categoryId: '', city: '', venueId: '', minPrice: '', maxPrice: '', sort: 'startTime,asc' });
                   setSearchParams({});
                 }}
               />

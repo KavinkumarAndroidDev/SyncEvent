@@ -170,7 +170,7 @@ export default function SharedProfilePage({ children }) {
   if (!user) return <div style={{ padding: 40 }}><Spinner label="Loading profile..." /></div>;
 
   return (
-    <div style={{ padding: 40, display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <div className="profile-page-wrap" style={{ padding: 40, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
       <div>
         <h2 className="view-title">Account & Profile</h2>
@@ -185,9 +185,9 @@ export default function SharedProfilePage({ children }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
-        <div style={CARD}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
+      <div className="profile-card-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+        <div className="profile-card-box" style={CARD}>
+          <div className="profile-card-head" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
             <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg, var(--primary), #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
@@ -211,7 +211,7 @@ export default function SharedProfilePage({ children }) {
                 style={{ cursor: 'not-allowed', background: 'var(--neutral-50)', color: 'var(--neutral-400)' }}
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="profile-inner-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={FIELD_LABEL}>Phone</label>
                 <input className="form-input" type="tel" maxLength="10" value={profileForm.phone} onChange={e => setProfileForm(p => ({ ...p, phone: e.target.value }))} />
@@ -225,14 +225,14 @@ export default function SharedProfilePage({ children }) {
                 </select>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div className="profile-action-row" style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button onClick={handleUpdateProfile} loading={loading.profile}>Save Changes</Button>
             </div>
           </div>
         </div>
 
-        <div style={CARD}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
+        <div className="profile-card-box" style={CARD}>
+          <div className="profile-card-head" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--neutral-50)' }}>
             <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg, #ef4444, #f97316)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -292,7 +292,7 @@ export default function SharedProfilePage({ children }) {
                   placeholder="Repeat new password"
                 />
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <div className="profile-action-row" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <Button variant="secondary" onClick={() => { setStep('IDLE'); setSecurityForm({ otp: '', newPassword: '', confirmPassword: '' }); }}>
                   Cancel
                 </Button>

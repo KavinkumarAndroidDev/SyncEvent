@@ -35,7 +35,7 @@ axiosInstance.interceptors.response.use(
 
         if (!refreshPromise) {
           refreshPromise = axios
-            .post(`${axiosInstance.defaults.baseURL}/auth/refresh`, { refreshToken })
+            .post(`${axiosInstance.defaults.baseURL}auth/refresh`, { refreshToken })
             .then((response) => {
               const { accessToken, refreshToken: newRefreshToken } = response.data;
               setAuthTokens(accessToken, newRefreshToken);

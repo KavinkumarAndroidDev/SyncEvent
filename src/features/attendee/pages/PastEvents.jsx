@@ -35,7 +35,21 @@ export default function PastEvents() {
             uniqueEvents.push(b);
           }
         });
-        setEvents(uniqueEvents);
+        const withLocations = await Promise.all(uniqueEvents.map(async (item) => {
+          if (item.venueName || item.eventLocation || item.city) return item;
+          try {
+            const eventRes = await axiosInstance.get(`/events/${item.eventId}`);
+            return {
+              ...item,
+              venueName: eventRes.data?.venueName,
+              eventLocation: eventRes.data?.address,
+              city: eventRes.data?.city,
+            };
+          } catch {
+            return item;
+          }
+        }));
+        setEvents(withLocations);
       } catch (err) {
         console.error(err);
       } finally {
@@ -129,7 +143,7 @@ export default function PastEvents() {
                   </div>
                   <div className="pe-meta">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    <span>{ev.venueName || ev.eventLocation || ''}</span>
+                    <span>{[ev.venueName || ev.eventLocation, ev.city].filter(Boolean).join(', ') || 'Location TBA'}</span>
                   </div>
                 </div>
                 <div className="pe-actions" style={{ marginTop: '20px' }}>

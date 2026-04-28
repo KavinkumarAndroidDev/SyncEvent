@@ -67,6 +67,9 @@ export default function AdminEvents() {
 
   const filteredEvents = useMemo(() => {
     return [...events].filter((item) => {
+      if (item.status === 'PENDING_APPROVAL' && new Date(item.startTime) < new Date()) {
+        return false;
+      }
       const text = `${item.title || ''} ${item.categoryName || ''} ${item.venueName || ''}`.toLowerCase();
       return text.includes(search.toLowerCase());
     });
@@ -202,9 +205,9 @@ export default function AdminEvents() {
               <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'REJECTED')} loading={updating}>Reject</Button>
             )}
             {selectedEvent?.status === 'APPROVED' && (
-              <Button onClick={() => updateEventStatus(selectedEvent.id, 'PUBLISHED')} loading={updating}>Publish</Button>
+              <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'CANCELLED')} loading={updating}>Cancel</Button>
             )}
-            {['PUBLISHED', 'APPROVED'].includes(selectedEvent?.status) && (
+            {selectedEvent?.status === 'PUBLISHED' && (
               <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'CANCELLED')} loading={updating}>Cancel</Button>
             )}
             <Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>

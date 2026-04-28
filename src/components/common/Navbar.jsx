@@ -40,6 +40,7 @@ export default function Navbar() {
                 <Link to="/events" className="nav-link">Events</Link>
                 <Link to="/about" className="nav-link">About</Link>
                 <Link to="/contact" className="nav-link">Contact</Link>
+                {user?.role === 'ATTENDEE' && <Link to="/dashboard/notifications" className="nav-link">Notifications</Link>}
               </>
             )}
           </nav>
@@ -83,6 +84,7 @@ export default function Navbar() {
                 <>
                   <Link to="/" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Home</Link>
                   <Link to="/events" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Events</Link>
+                  {user?.role === 'ATTENDEE' && <Link to="/dashboard/notifications" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Notifications</Link>}
                   <Link to="/about" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>About</Link>
                   <Link to="/contact" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Contact</Link>
                 </>

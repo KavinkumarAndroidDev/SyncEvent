@@ -4,6 +4,7 @@ import Home from '../features/events/pages/Home';
 import Login from '../features/auth/pages/Login';
 import Register from '../features/auth/pages/Register';
 import RegisterOrganizer from '../features/auth/pages/RegisterOrganizer';
+import ForgotPassword from '../features/auth/pages/ForgotPassword';
 import Events from '../features/events/pages/Events';
 import EventDetail from '../features/events/pages/EventDetail';
 import BookingPage from '../features/booking/pages/BookingPage';
@@ -17,6 +18,7 @@ import Profile from '../features/attendee/pages/Profile';
 import MyRegistrations from '../features/attendee/pages/MyRegistrations';
 import PastEvents from '../features/attendee/pages/PastEvents';
 import Payments from '../features/attendee/pages/Payments';
+import AttendeeNotifications from '../features/attendee/pages/AttendeeNotifications';
 import AdminDashboard from '../features/admin/layouts/AdminDashboard';
 import AdminOverview from '../features/admin/pages/AdminOverview';
 import AdminCategories from '../features/admin/pages/AdminCategories';
@@ -75,6 +77,7 @@ const router = createBrowserRouter([
                   { path: 'registrations', element: <MyRegistrations /> },
                   { path: 'past-events', element: <PastEvents /> },
                   { path: 'payments', element: <Payments /> },
+                  { path: 'notifications', element: <AttendeeNotifications /> },
                 ],
               },
             ],
@@ -130,6 +133,7 @@ const router = createBrowserRouter([
             children: [
               { path: 'login', element: <Login /> },
               { path: 'register', element: <Register /> },
+              { path: 'forgot-password', element: <ForgotPassword /> },
             ],
           },
         ],

@@ -19,7 +19,7 @@ const EMPTY_FORM = {
   cancellationDeadline: '',
 };
 
-const EMPTY_TICKET = { name: '', price: '', totalQuantity: '' };
+const EMPTY_TICKET = { name: '', price: '', totalQuantity: '', saleStartTime: '', saleEndTime: '' };
 
 function toLocalISO(dateString) {
   if (!dateString) return '';
@@ -118,8 +118,10 @@ export default function OrganizerEditEvent() {
       setTicketSaving(true);
       const res = await axiosInstance.post(`/events/${id}/tickets`, {
         name: newTicket.name,
-        price: Number(newTicket.price) || 0,
+        price: Number(newTicket.price),
         totalQuantity: Number(newTicket.totalQuantity),
+        saleStartTime: newTicket.saleStartTime,
+        saleEndTime: newTicket.saleEndTime,
       });
       setTickets(prev => [...prev, res.data]);
       setNewTicket(null);
@@ -137,6 +139,8 @@ export default function OrganizerEditEvent() {
         name: editingTicket.name,
         price: Number(editingTicket.price),
         totalQuantity: Number(editingTicket.totalQuantity),
+        saleStartTime: editingTicket.saleStartTime,
+        saleEndTime: editingTicket.saleEndTime,
       });
       setTickets(prev => prev.map(tk => tk.id === t.id ? res.data : tk));
       setEditingTicket(null);
@@ -267,11 +271,21 @@ export default function OrganizerEditEvent() {
                   </div>
                   <div>
                     <label className="form-label">Price (₹)</label>
-                    <input className="form-input" type="number" min="0" placeholder="0 for free" value={newTicket.price} onChange={e => setNewTicket(p => ({ ...p, price: e.target.value }))} />
+                    <input className="form-input" type="number" min="1" placeholder="Minimum ₹1" value={newTicket.price} onChange={e => setNewTicket(p => ({ ...p, price: e.target.value }))} />
                   </div>
                   <div>
                     <label className="form-label">Total Quantity <span style={{ color: 'var(--error)' }}>*</span></label>
                     <input className="form-input" type="number" min="1" placeholder="e.g. 100" value={newTicket.totalQuantity} onChange={e => setNewTicket(p => ({ ...p, totalQuantity: e.target.value }))} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label className="form-label">Sale Start <span style={{ color: 'var(--error)' }}>*</span></label>
+                    <input className="form-input" type="datetime-local" value={newTicket.saleStartTime} onChange={e => setNewTicket(p => ({ ...p, saleStartTime: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="form-label">Sale End <span style={{ color: 'var(--error)' }}>*</span></label>
+                    <input className="form-input" type="datetime-local" value={newTicket.saleEndTime} onChange={e => setNewTicket(p => ({ ...p, saleEndTime: e.target.value }))} />
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -297,11 +311,21 @@ export default function OrganizerEditEvent() {
                         </div>
                         <div>
                           <label className="form-label">Price (₹)</label>
-                          <input className="form-input" type="number" value={editingTicket.price} onChange={e => setEditingTicket(p => ({ ...p, price: e.target.value }))} />
+                          <input className="form-input" type="number" min="1" value={editingTicket.price} onChange={e => setEditingTicket(p => ({ ...p, price: e.target.value }))} />
                         </div>
                         <div>
                           <label className="form-label">Total Quantity</label>
                           <input className="form-input" type="number" value={editingTicket.totalQuantity} onChange={e => setEditingTicket(p => ({ ...p, totalQuantity: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <label className="form-label">Sale Start</label>
+                          <input className="form-input" type="datetime-local" value={toLocalISO(editingTicket.saleStartTime)} onChange={e => setEditingTicket(p => ({ ...p, saleStartTime: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="form-label">Sale End</label>
+                          <input className="form-input" type="datetime-local" value={toLocalISO(editingTicket.saleEndTime)} onChange={e => setEditingTicket(p => ({ ...p, saleEndTime: e.target.value }))} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

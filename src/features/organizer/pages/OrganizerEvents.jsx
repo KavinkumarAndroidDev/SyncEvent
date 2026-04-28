@@ -23,6 +23,16 @@ import OrgToast from '../components/OrgToast';
 import OrgStatusBadge from '../components/OrgStatusBadge';
 import { useToast } from '../components/orgHooks.jsx';
 
+function getTicketDisplayStatus(item) {
+  const now = new Date();
+  const start = item.saleStartTime ? new Date(item.saleStartTime) : null;
+  const end = item.saleEndTime ? new Date(item.saleEndTime) : null;
+  if (item.status !== 'ACTIVE') return 'Inactive';
+  if (start && now < start) return 'Upcoming';
+  if (end && now > end) return 'Ended';
+  return 'Active';
+}
+
 export default function OrganizerEvents() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +52,7 @@ export default function OrganizerEvents() {
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const [editingTicket, setEditingTicket] = useState(null);
   const [newTicket, setNewTicket] = useState(null);
+  const checkInEnabled = isEventActive(manageEvent?.startTime, manageEvent?.endTime);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -72,6 +83,15 @@ export default function OrganizerEvents() {
   const handleStatusChange = async (id, newStatus) => {
     try {
       setUpdating(true);
+      if (newStatus === 'PUBLISHED') {
+        const evt = events.find(e => e.id === id);
+        if (evt && new Date(evt.startTime) < new Date()) {
+          showToast('Cannot publish an event with a past start date.', 'error');
+          setUpdating(false);
+          setConfirmModal(null);
+          return;
+        }
+      }
       await axiosInstance.patch(`/events/${id}/status`, { status: newStatus });
       showToast(`Status updated to ${getEventStatusLabel(newStatus)}.`);
       setConfirmModal(null);
@@ -489,6 +509,10 @@ export default function OrganizerEvents() {
                               <td style={{ textAlign: 'right' }}>
                                 {p.status !== 'CHECKED_IN' && p.status !== 'CANCELLED' && (
                                   <Button variant="table" onClick={async () => {
+                                    if (!checkInEnabled) {
+                                      showToast('Check-in is enabled only when the event is ongoing.', 'error');
+                                      return;
+                                    }
                                     try {
                                       setUpdating(true);
                                       await axiosInstance.patch(`/participants/${p.id}/status`, { status: 'CHECKED_IN' });
@@ -501,7 +525,7 @@ export default function OrganizerEvents() {
                                     } finally {
                                       setUpdating(false);
                                     }
-                                  }}>Check In</Button>
+                                  }} disabled={!checkInEnabled}>Check In</Button>
                                 )}
                               </td>
                             </tr>
@@ -533,18 +557,22 @@ export default function OrganizerEvents() {
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>New Ticket Tier</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                           <input className="form-input" placeholder="Tier name" value={newTicket.name} onChange={e => setNewTicket(p => ({ ...p, name: e.target.value }))} />
-                          <input className="form-input" placeholder="Price (₹)" type="number" min="0" value={newTicket.price} onChange={e => setNewTicket(p => ({ ...p, price: e.target.value }))} />
+                          <input className="form-input" placeholder="Price (₹)" type="number" min="1" value={newTicket.price} onChange={e => setNewTicket(p => ({ ...p, price: e.target.value }))} />
                           <input className="form-input" placeholder="Total quantity" type="number" min="1" value={newTicket.totalQuantity} onChange={e => setNewTicket(p => ({ ...p, totalQuantity: e.target.value }))} />
                         </div>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                           <button onClick={() => setNewTicket(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                           <button onClick={async () => {
                             if (!newTicket.name || !newTicket.totalQuantity) return;
+                            if (Number(newTicket.price) < 1) {
+                              showToast('Ticket price must be at least ₹1.', 'error');
+                              return;
+                            }
                             try {
                               setUpdating(true);
                               const res = await axiosInstance.post(`/events/${manageEvent.id}/tickets`, {
                                 name: newTicket.name,
-                                price: Number(newTicket.price) || 0,
+                                price: Number(newTicket.price),
                                 totalQuantity: Number(newTicket.totalQuantity),
                               });
                               setHubData(prev => ({ ...prev, tickets: [...prev.tickets, res.data] }));
@@ -565,13 +593,17 @@ export default function OrganizerEvents() {
                             <div style={{ padding: 16, background: '#fafafa', display: 'grid', gap: 10 }}>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                                 <input className="form-input" value={editingTicket.name} onChange={e => setEditingTicket(p => ({ ...p, name: e.target.value }))} placeholder="Name" />
-                                <input className="form-input" type="number" value={editingTicket.price} onChange={e => setEditingTicket(p => ({ ...p, price: e.target.value }))} placeholder="Price" />
+                                <input className="form-input" type="number" min="1" value={editingTicket.price} onChange={e => setEditingTicket(p => ({ ...p, price: e.target.value }))} placeholder="Price" />
                                 <input className="form-input" type="number" value={editingTicket.totalQuantity} onChange={e => setEditingTicket(p => ({ ...p, totalQuantity: e.target.value }))} placeholder="Quantity" />
                               </div>
                               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                                 <button onClick={() => setEditingTicket(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                                 <button onClick={async () => {
                                   try {
+                                    if (Number(editingTicket.price) < 1) {
+                                      showToast('Ticket price must be at least ₹1.', 'error');
+                                      return;
+                                    }
                                     setUpdating(true);
                                     const res = await axiosInstance.put(`/tickets/${t.id}`, {
                                       name: editingTicket.name,
@@ -598,7 +630,7 @@ export default function OrganizerEvents() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 <div style={{ textAlign: 'right' }}>
                                   <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 17 }}>{formatMoney(t.price)}</div>
-                                  <span className={`badge badge-${t.status === 'ACTIVE' ? 'completed' : 'cancelled'}`} style={{ fontSize: 10 }}>{t.status}</span>
+                                  <span className={`badge badge-${t.status === 'ACTIVE' ? 'completed' : 'cancelled'}`} style={{ fontSize: 10 }}>{getTicketDisplayStatus(t)}</span>
                                 </div>
                                 {canEditEvent(manageEvent?.status) && (
                                   <div style={{ display: 'flex', gap: 6 }}>

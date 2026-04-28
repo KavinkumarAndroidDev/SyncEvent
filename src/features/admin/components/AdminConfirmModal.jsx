@@ -1,12 +1,13 @@
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 
-export default function AdminConfirmModal({ confirm, loading, onClose, onConfirm }) {
+export default function AdminConfirmModal({ confirm, loading, onClose, onConfirm, zIndex = 1100 }) {
   return (
     <Modal
       isOpen={!!confirm}
       title={confirm?.title || 'Confirm Action'}
       onClose={onClose}
+      zIndex={zIndex}
       actions={
         <>
           <Button variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
