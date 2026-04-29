@@ -5,6 +5,8 @@ import { clearError, resetOtp, resetPassword, sendOtp } from '../slices/authSlic
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 
+const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/;
+
 export default function ForgotPassword() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -33,7 +35,9 @@ export default function ForgotPassword() {
     const errs = {};
     if (!form.otp.trim()) errs.otp = 'Enter the OTP';
     else if (!/^\d{6}$/.test(form.otp)) errs.otp = 'OTP must be 6 digits';
-    if (form.newPassword.length < 8) errs.newPassword = 'Password must be at least 8 characters';
+    if (!form.newPassword) errs.newPassword = 'Enter new password';
+    else if (!PASSWORD_REGEX.test(form.newPassword)) errs.newPassword = 'Password must have 8 characters, uppercase, lowercase, number and special character';
+    if (!form.confirmPassword) errs.confirmPassword = 'Confirm your password';
     if (form.newPassword !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
     if (Object.keys(errs).length) {
       setErrors(errs);
@@ -90,7 +94,10 @@ export default function ForgotPassword() {
               name="otp"
               placeholder="6-digit OTP"
               value={form.otp}
-              onChange={(e) => setForm({ ...form, otp: e.target.value.replace(/\D/g, '') })}
+              onChange={(e) => {
+                setForm({ ...form, otp: e.target.value.replace(/\D/g, '') });
+                setErrors({ ...errors, otp: '' });
+              }}
               error={errors.otp}
               maxLength={6}
             />
@@ -101,7 +108,10 @@ export default function ForgotPassword() {
               name="newPassword"
               placeholder="Minimum 8 characters"
               value={form.newPassword}
-              onChange={(e) => setForm({ ...form, newPassword: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, newPassword: e.target.value });
+                setErrors({ ...errors, newPassword: '' });
+              }}
               error={errors.newPassword}
             />
             <Input
@@ -111,7 +121,10 @@ export default function ForgotPassword() {
               name="confirmPassword"
               placeholder="Repeat password"
               value={form.confirmPassword}
-              onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, confirmPassword: e.target.value });
+                setErrors({ ...errors, confirmPassword: '' });
+              }}
               error={errors.confirmPassword}
             />
             <Button type="submit" loading={loading}>Reset Password</Button>

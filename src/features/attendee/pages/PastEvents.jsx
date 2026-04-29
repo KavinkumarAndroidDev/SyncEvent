@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import axiosInstance from '../../../lib/axios';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
@@ -8,6 +9,7 @@ import Spinner from '../../../components/common/Spinner';
 const PAGE_SIZE = 6;
 
 export default function PastEvents() {
+  const { user } = useSelector((s) => s.auth);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -35,21 +37,40 @@ export default function PastEvents() {
             uniqueEvents.push(b);
           }
         });
+        const submitted = new Set();
         const withLocations = await Promise.all(uniqueEvents.map(async (item) => {
-          if (item.venueName || item.eventLocation || item.city) return item;
-          try {
-            const eventRes = await axiosInstance.get(`/events/${item.eventId}`);
-            return {
-              ...item,
-              venueName: eventRes.data?.venueName,
-              eventLocation: eventRes.data?.address,
-              city: eventRes.data?.city,
-            };
-          } catch {
-            return item;
+          let currentItem = item;
+          if (!item.venueName && !item.eventLocation && !item.city) {
+            try {
+              const eventRes = await axiosInstance.get(`/events/${item.eventId}`);
+              currentItem = {
+                ...item,
+                venueName: eventRes.data?.venueName,
+                eventLocation: eventRes.data?.address,
+                city: eventRes.data?.city,
+              };
+            } catch {
+              currentItem = item;
+            }
           }
+          try {
+            const feedbackRes = await axiosInstance.get(`/events/${item.eventId}/feedbacks?size=100`);
+            const feedbacks = feedbackRes.data?.content || [];
+            const hasFeedback = feedbacks.some(f =>
+              f.userId === user?.id ||
+              f.attendeeId === user?.id ||
+              f.userEmail === user?.email ||
+              f.email === user?.email ||
+              f.userName === user?.fullName
+            );
+            if (hasFeedback) submitted.add(item.eventId);
+          } catch (err) {
+            console.error(err);
+          }
+          return currentItem;
         }));
         setEvents(withLocations);
+        setSubmittedFeedbacks(submitted);
       } catch (err) {
         console.error(err);
       } finally {
@@ -57,7 +78,7 @@ export default function PastEvents() {
       }
     };
     fetchEvents();
-  }, []);
+  }, [user?.id, user?.email, user?.fullName]);
 
   const filteredEvents = useMemo(() => {
     let result = events.filter(e =>
@@ -162,7 +183,6 @@ export default function PastEvents() {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="pagination" style={{ marginTop: '32px' }}>
           <button className="page-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>

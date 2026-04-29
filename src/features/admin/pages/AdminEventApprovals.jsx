@@ -167,7 +167,6 @@ export default function AdminEventApprovals() {
                     <Button variant="table" onClick={() => openEvent(item.id)}>Review</Button>
                     {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'APPROVED')}>Approve</Button>}
                     {statusFilter === 'PENDING_APPROVAL' && <Button variant="table" onClick={() => askStatus(item, 'REJECTED')}>Reject</Button>}
-                    {statusFilter === 'APPROVED' && <Button variant="table" onClick={() => askStatus(item, 'PUBLISHED')}>Publish</Button>}
                     {(statusFilter === 'APPROVED' || statusFilter === 'PUBLISHED') && <Button variant="table" onClick={() => askStatus(item, 'CANCELLED')}>Cancel</Button>}
                   </div>
                 </td>
@@ -205,9 +204,6 @@ export default function AdminEventApprovals() {
             )}
             {selectedEvent?.status === 'PENDING_APPROVAL' && (
               <Button variant="secondary" onClick={() => askStatus(selectedEvent, 'REJECTED')} loading={saving}>Reject</Button>
-            )}
-            {selectedEvent?.status === 'APPROVED' && (
-              <Button onClick={() => askStatus(selectedEvent, 'PUBLISHED')} loading={saving}>Publish</Button>
             )}
             {['PUBLISHED', 'APPROVED'].includes(selectedEvent?.status) && (
               <Button variant="secondary" onClick={() => askStatus(selectedEvent, 'CANCELLED')} loading={saving}>Cancel</Button>
