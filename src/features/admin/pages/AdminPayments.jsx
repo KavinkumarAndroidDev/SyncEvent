@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
+import { fetchAdminPayments } from '../slices/adminSlice';
 
 export default function AdminPayments() {
-  const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { payments, loading } = useSelector((s) => s.admin);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -15,19 +16,8 @@ export default function AdminPayments() {
   const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
-    async function loadPayments() {
-      try {
-        const res = await axiosInstance.get('/payments?size=200');
-        setPayments(res.data.content || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadPayments();
-  }, []);
+    dispatch(fetchAdminPayments());
+  }, [dispatch]);
 
   const stats = useMemo(() => {
     const successful = payments.filter(p => p.status === 'SUCCESS');

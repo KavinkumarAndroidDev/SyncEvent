@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import { getTicketSold, toDateTimeInput, isFutureEvent, isEventActive } from '../utils/organizerHelpers';
 import { exportCsv } from '../../admin/utils/adminUtils';
+import {
+  fetchOrganizerTickets,
+  fetchOrganizerTicketsEvents,
+  saveOrganizerTicket,
+  updateOrganizerTicketStatus
+} from '../slices/organizerSlice';
 
 const EMPTY_FORM = { name: '', price: '', totalQuantity: '', saleStartTime: '', saleEndTime: '' };
 
@@ -20,11 +26,9 @@ function getTicketDisplayStatus(item) {
 }
 
 export default function OrganizerTickets() {
-  const [events, setEvents] = useState([]);
+  const dispatch = useDispatch();
+  const { ticketEvents: events, tickets, loading, saving } = useSelector((s) => s.organizer);
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [tickets, setTickets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showConfirmToggle, setShowConfirmToggle] = useState(null);
   const [editingTicket, setEditingTicket] = useState(null);
@@ -40,35 +44,26 @@ export default function OrganizerTickets() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        setLoading(true);
-        const res = await axiosInstance.get('/events?size=200&sort=startTime,desc');
-        const eventItems = res.data?.content || [];
-        setEvents(eventItems);
+        const eventItems = await dispatch(fetchOrganizerTicketsEvents()).unwrap();
         if (eventItems.length) setSelectedEventId(String(eventItems[0].id));
       } catch (err) {
-        showToast(err.response?.data?.message || 'Failed to load events.', 'error');
-      } finally {
-        setLoading(false);
+        showToast(err || 'Failed to load events.', 'error');
       }
     }
     loadEvents();
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     async function loadTickets() {
       if (!selectedEventId) return;
       try {
-        setLoading(true);
-        const res = await axiosInstance.get(`/events/${selectedEventId}/tickets`);
-        setTickets(res.data || []);
+        await dispatch(fetchOrganizerTickets(selectedEventId)).unwrap();
       } catch (err) {
-        showToast(err.response?.data?.message || 'Failed to load tickets.', 'error');
-      } finally {
-        setLoading(false);
+        showToast(err || 'Failed to load tickets.', 'error');
       }
     }
     loadTickets();
-  }, [selectedEventId]);
+  }, [dispatch, selectedEventId]);
 
   const selectedEvent = useMemo(() => events.find((item) => String(item.id) === String(selectedEventId)), [events, selectedEventId]);
   const isFuture = useMemo(() => isFutureEvent(selectedEvent?.startTime), [selectedEvent]);
@@ -119,11 +114,6 @@ export default function OrganizerTickets() {
     setShowModal(true);
   }
 
-  async function reloadTickets() {
-    const res = await axiosInstance.get(`/events/${selectedEventId}/tickets`);
-    setTickets(res.data || []);
-  }
-
   async function saveTicket() {
     try {
       if (!canManageTickets) {
@@ -134,31 +124,11 @@ export default function OrganizerTickets() {
         showToast('Ticket price must be at least ₹1.', 'error');
         return;
       }
-      setSaving(true);
-      if (editingTicket) {
-        await axiosInstance.put(`/tickets/${editingTicket.id}`, {
-          price: Number(form.price),
-          totalQuantity: quantityLocked ? Number(editingTicket.totalQuantity) : Number(form.totalQuantity),
-          saleStartTime: form.saleStartTime,
-          saleEndTime: form.saleEndTime,
-        });
-        showToast('Ticket updated successfully.');
-      } else {
-        await axiosInstance.post(`/events/${selectedEventId}/tickets`, {
-          name: form.name,
-          price: Number(form.price),
-          totalQuantity: Number(form.totalQuantity),
-          saleStartTime: form.saleStartTime,
-          saleEndTime: form.saleEndTime,
-        });
-        showToast('Ticket created successfully.');
-      }
+      await dispatch(saveOrganizerTicket({ eventId: selectedEventId, editingTicket, form, quantityLocked })).unwrap();
+      showToast(editingTicket ? 'Ticket updated successfully.' : 'Ticket created successfully.');
       setShowModal(false);
-      await reloadTickets();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save ticket.', 'error');
-    } finally {
-      setSaving(false);
+      showToast(err || 'Failed to save ticket.', 'error');
     }
   }
 
@@ -171,16 +141,12 @@ export default function OrganizerTickets() {
         setShowConfirmToggle(null);
         return;
       }
-      setSaving(true);
       const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      await axiosInstance.patch(`/tickets/${item.id}/status`, { status: nextStatus });
+      await dispatch(updateOrganizerTicketStatus(item)).unwrap();
       showToast(`Ticket marked as ${nextStatus === 'ACTIVE' ? 'Active' : 'Inactive'}.`);
       setShowConfirmToggle(null);
-      await reloadTickets();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update ticket status.', 'error');
-    } finally {
-      setSaving(false);
+      showToast(err || 'Failed to update ticket status.', 'error');
     }
   }
 

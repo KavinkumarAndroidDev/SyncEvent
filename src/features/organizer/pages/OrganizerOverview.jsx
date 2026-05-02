@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Spinner from '../../../components/common/Spinner';
 import { formatMoney, formatDateTime } from '../../../utils/formatters';
@@ -9,82 +9,21 @@ import OrgPageHeader from '../components/OrgPageHeader';
 import OrgStatCard from '../components/OrgStatCard';
 import OrgStatusBadge from '../components/OrgStatusBadge';
 import { PERIOD_LABELS } from '../components/OrgPeriodFilter';
+import { fetchOrganizerOverview, fetchOrganizerRevenueChart } from '../slices/organizerSlice';
 
 export default function OrganizerOverview() {
+  const dispatch = useDispatch();
+  const { overview, loading, chartLoading } = useSelector((s) => s.organizer);
+  const { stats, recentEvents, chartData, notifications, unreadCount, chartError } = overview;
   const [period, setPeriod] = useState('ALL');
-  const [stats, setStats] = useState({ totalRevenue: 0, totalTickets: 0, totalEvents: 0, avgAttendance: 0 });
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [chartData, setChartData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [chartError, setChartError] = useState(false);
 
   const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [summaryRes, reportsRes, notifRes] = await Promise.all([
-        axiosInstance.get('/reports/summary').catch(() => ({ data: {} })),
-        axiosInstance.get('/reports/events?size=500').catch(() => ({ data: { content: [] } })),
-        axiosInstance.get('/notifications?size=5').catch(() => ({ data: { content: [] } })),
-      ]);
-      const summaryData = summaryRes.data || {};
-      const eventReports = reportsRes.data?.content || [];
-      const notifContent = notifRes.data?.content || [];
-
-      const agg = eventReports.reduce((acc, r) => ({
-        revenue: acc.revenue + Number(r.netRevenue || 0),
-        tickets: acc.tickets + Number(r.confirmedRegistrations || 0),
-        totalAttendance: acc.totalAttendance + Number(r.attendanceRate || 0),
-        count: acc.count + 1,
-      }), { revenue: 0, tickets: 0, totalAttendance: 0, count: 0 });
-
-      setStats({
-        totalRevenue: Number(summaryData.totalRevenue) || agg.revenue,
-        totalTickets: Number(summaryData.confirmedRegistrations) || agg.tickets,
-        totalEvents: Number(summaryData.totalEvents) || agg.count,
-        avgAttendance: Math.min(agg.count ? (agg.totalAttendance / agg.count) : 0, 100),
-      });
-      setRecentEvents([...eventReports].sort((a, b) => new Date(b.startTime) - new Date(a.startTime)).slice(0, 5));
-      setNotifications(notifContent.slice(0, 5));
-      setUnreadCount(notifContent.filter(n => !n.isRead).length);
-    } catch (err) {
-      console.error('Dashboard load error', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    dispatch(fetchOrganizerOverview());
+  }, [dispatch]);
 
   const loadChart = useCallback(async (activePeriod) => {
-    try {
-      setChartLoading(true);
-      setChartError(false);
-      const to = new Date();
-      let from = new Date();
-      let groupBy = 'month';
-      if (activePeriod === '7D') { from.setDate(to.getDate() - 7); groupBy = 'day'; }
-      else if (activePeriod === '1M') { from.setDate(to.getDate() - 30); groupBy = 'week'; }
-      else if (activePeriod === '1Y') { from.setFullYear(to.getFullYear() - 1); groupBy = 'month'; }
-      else { from = new Date(2022, 0, 1); groupBy = 'month'; }
-
-      const res = await axiosInstance.get(
-        `/reports/revenue?from=${from.toISOString().split('T')[0]}&to=${to.toISOString().split('T')[0]}&groupBy=${groupBy}`
-      );
-      const points = Array.isArray(res.data) ? res.data : [];
-      setChartData(points.map(p => ({ date: p.period, revenue: Number(p.revenue || 0), tickets: Number(p.registrations || 0) })));
-      if (activePeriod !== 'ALL' && points.length > 0) {
-        const pr = points.reduce((s, p) => s + Number(p.revenue || 0), 0);
-        const pt = points.reduce((s, p) => s + Number(p.registrations || 0), 0);
-        setStats(prev => ({ ...prev, totalRevenue: pr, totalTickets: pt }));
-      }
-    } catch {
-      setChartError(true);
-      setChartData([]);
-    } finally {
-      setChartLoading(false);
-    }
-  }, []);
+    dispatch(fetchOrganizerRevenueChart(activePeriod));
+  }, [dispatch]);
 
   useEffect(() => { loadData(); loadChart('ALL'); }, [loadData, loadChart]);
   useEffect(() => { loadChart(period); if (period === 'ALL') loadData(); }, [period]); // eslint-disable-line

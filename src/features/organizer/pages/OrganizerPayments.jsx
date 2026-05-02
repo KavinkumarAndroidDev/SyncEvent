@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Pagination from '../../../components/ui/Pagination';
 import Spinner from '../../../components/common/Spinner';
 import Button from '../../../components/ui/Button';
@@ -12,18 +12,11 @@ import OrgToast from '../components/OrgToast';
 import OrgPeriodFilter from '../components/OrgPeriodFilter';
 import OrgStatusBadge from '../components/OrgStatusBadge';
 import { useToast } from '../components/orgHooks.jsx';
-
-function formatLocalDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { fetchOrganizerPayments } from '../slices/organizerSlice';
 
 export default function OrganizerPayments() {
-  const [items, setItems] = useState([]);
-  const [revenuePoints, setRevenuePoints] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { paymentItems: items, revenuePoints, loading } = useSelector((s) => s.organizer);
   const [page, setPage] = useState(0);
   const [period, setPeriod] = useState('ALL');
   const { toast, showToast } = useToast();
@@ -32,35 +25,13 @@ export default function OrganizerPayments() {
   useEffect(() => {
     async function loadData() {
       try {
-        setLoading(true);
-        const to = new Date();
-        const from = new Date();
-        let groupBy = 'month';
-        if (period === '7D') { from.setDate(to.getDate() - 7); groupBy = 'day'; }
-        else if (period === '1M') { from.setDate(to.getDate() - 30); groupBy = 'week'; }
-        else if (period === '1Y') { from.setFullYear(to.getFullYear() - 1); groupBy = 'month'; }
-        else { from.setFullYear(2022); groupBy = 'month'; }
-        from.setHours(0, 0, 0, 0);
-        to.setHours(23, 59, 59, 999);
-
-        const [eventsRes, revenueRes] = await Promise.all([
-          axiosInstance.get('/reports/events?size=500'),
-          axiosInstance.get(`/reports/revenue?from=${formatLocalDate(from)}&to=${formatLocalDate(to)}&groupBy=${groupBy}`).catch(() => ({ data: [] })),
-        ]);
-        setItems(eventsRes.data?.content || []);
-        setRevenuePoints((revenueRes.data || []).map(p => ({
-          name: p.period || 'Unknown',
-          revenue: Number(p.revenue || 0),
-          tickets: Number(p.registrations || 0),
-        })));
+        await dispatch(fetchOrganizerPayments(period)).unwrap();
       } catch {
         showToast('Failed to load financial data.', 'error');
-      } finally {
-        setLoading(false);
       }
     }
     loadData();
-  }, [period]);
+  }, [dispatch, period, showToast]);
 
   const filteredItems = useMemo(() => {
     if (period === 'ALL') return items;

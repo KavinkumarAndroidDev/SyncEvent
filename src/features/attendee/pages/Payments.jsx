@@ -1,36 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { formatDate, formatDateTime, formatMoney } from '../../../utils/formatters';
 import { openPdfDocument } from '../../../utils/documentPrint';
 import Spinner from '../../../components/common/Spinner';
+import { fetchAttendeePayments } from '../slices/attendeeSlice';
 
 const PAGE_SIZE = 10;
 
 export default function Payments() {
-  const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { payments, paymentsLoading: loading } = useSelector((s) => s.attendee);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
 
-  const fetchPayments = async () => {
-    try {
-      const res = await axiosInstance.get('/payments/my-payments?size=200');
-      setPayments(res.data.content || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchPayments();
-  }, []);
+    dispatch(fetchAttendeePayments());
+  }, [dispatch]);
 
   const filteredPayments = useMemo(() => {
     const result = payments.filter((payment) => {

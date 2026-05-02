@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import { fetchMetadata } from '../../metadata/slices/metadataSlice';
 import Pagination from '../../../components/ui/Pagination';
 import Button from '../../../components/ui/Button';
@@ -8,16 +7,15 @@ import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import { fetchAdminCategories, saveAdminCategory, updateAdminCategoryStatus } from '../slices/adminSlice';
 
 const EMPTY_FORM = { categoryName: '' };
 
 export default function AdminCategories() {
   const dispatch = useDispatch();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { categories: items, loading, saving } = useSelector((s) => s.admin);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('name-asc');
+  const [sort] = useState('name-asc');
   const [page, setPage] = useState(0);
   const [pageSize] = useState(10);
   const [showModal, setShowModal] = useState(false);
@@ -29,22 +27,12 @@ export default function AdminCategories() {
   const [confirm, setConfirm] = useState(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  async function loadCategories() {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get('/categories');
-      setItems(res.data || []);
-    } catch (err) {
-      setMessageType('error');
-      setMessage('Failed to load categories.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadCategories();
-  }, []);
+    dispatch(fetchAdminCategories()).unwrap().catch((err) => {
+      setMessageType('error');
+      setMessage(err || 'Failed to load categories.');
+    });
+  }, [dispatch]);
 
   const stats = useMemo(() => ({
     total: items.length,
@@ -100,42 +88,29 @@ export default function AdminCategories() {
     }
 
     try {
-      setSaving(true);
-      if (editingItem) {
-        await axiosInstance.put(`/categories/${editingItem.id}`, { categoryName: form.categoryName.trim() });
-        setMessageType('success');
-        setMessage('Category updated.');
-      } else {
-        await axiosInstance.post('/categories', { categoryName: form.categoryName.trim() });
-        setMessageType('success');
-        setMessage('Category created.');
-      }
+      const msg = await dispatch(saveAdminCategory({ editingItem, form })).unwrap();
+      setMessageType('success');
+      setMessage(msg);
       closeModal();
-      await loadCategories();
+      await dispatch(fetchAdminCategories()).unwrap();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
-      setMessage('Operation failed.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Operation failed.');
     }
   }
 
   async function toggleStatus(item) {
     try {
-      setSaving(true);
-      const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      await axiosInstance.patch(`/categories/${item.id}/status`, { status: nextStatus });
+      const msg = await dispatch(updateAdminCategoryStatus(item)).unwrap();
       setMessageType('success');
-      setMessage(`Category status updated to ${nextStatus}.`);
+      setMessage(msg);
       setConfirm(null);
-      await loadCategories();
+      await dispatch(fetchAdminCategories()).unwrap();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
-      setMessage('Status update failed.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Status update failed.');
     }
   }
 

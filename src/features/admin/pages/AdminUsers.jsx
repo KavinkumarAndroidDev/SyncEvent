@@ -1,40 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDate } from '../../../utils/formatters';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import { fetchAdminUsers, updateAdminUserStatus } from '../slices/adminSlice';
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { users, loading, saving } = useSelector((s) => s.admin);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize] = useState(10);
   const [confirm, setConfirm] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
 
-  async function loadUsers() {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get('/users?size=200');
-      setUsers(res.data.content || []);
-    } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load users.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadUsers();
-  }, []);
+    dispatch(fetchAdminUsers()).unwrap().catch((err) => {
+      setMessageType('error');
+      setMessage(err || 'Failed to load users.');
+    });
+  }, [dispatch]);
 
   const stats = useMemo(() => {
     return {
@@ -60,17 +50,14 @@ export default function AdminUsers() {
 
   async function updateStatus(userId, status) {
     try {
-      setSaving(true);
-      await axiosInstance.patch(`/users/${userId}/status`, { status });
+      const msg = await dispatch(updateAdminUserStatus({ userId, status })).unwrap();
       setMessageType('success');
-      setMessage(`User status updated to ${status}.`);
+      setMessage(msg);
       setConfirm(null);
-      await loadUsers();
+      await dispatch(fetchAdminUsers()).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Update failed.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Update failed.');
     }
   }
 

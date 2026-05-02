@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import axiosInstance from '../../lib/axios';
-import { fetchCurrentUser, logoutUser } from '../../features/auth/slices/authSlice';
+import { logoutUser, resetPassword, sendOtp, updateCurrentUser } from '../../features/auth/slices/authSlice';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Spinner from '../common/Spinner';
@@ -104,11 +103,10 @@ export default function SharedProfilePage({ children }) {
   const handleUpdateProfile = async () => {
     setLoading(l => ({ ...l, profile: true }));
     try {
-      await axiosInstance.put('/users/me', profileForm);
-      dispatch(fetchCurrentUser());
+      await dispatch(updateCurrentUser(profileForm)).unwrap();
       showToast('Personal information updated successfully.');
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update profile.', 'error');
+      showToast(err || 'Failed to update profile.', 'error');
     } finally {
       setLoading(l => ({ ...l, profile: false }));
     }
@@ -117,11 +115,11 @@ export default function SharedProfilePage({ children }) {
   const handleSendOTP = async () => {
     setLoading(l => ({ ...l, otp: true }));
     try {
-      await axiosInstance.post('/auth/send-otp', { identifier: user.email });
+      await dispatch(sendOtp(user.email)).unwrap();
       setStep('OTP_SENT');
       openModal('Verification Code Sent', 'A 6-digit code has been sent to your registered email. Check your inbox (and spam folder).');
     } catch (err) {
-      const msg = err.response?.data?.message || '';
+      const msg = err || '';
       if (msg.toLowerCase().includes('already sent')) {
         setStep('OTP_SENT');
         openModal('Code Already Sent', 'An active code was recently sent. Enter it below to continue.');
@@ -145,11 +143,11 @@ export default function SharedProfilePage({ children }) {
     }
     setLoading(l => ({ ...l, password: true }));
     try {
-      await axiosInstance.post('/auth/reset-password', {
+      await dispatch(resetPassword({
         identifier: user.email,
         otp: securityForm.otp,
         newPassword: securityForm.newPassword,
-      });
+      })).unwrap();
       openModal(
         'Password Changed',
         'Your password has been updated. You will be signed out for security.',

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import Spinner from '../../../components/common/Spinner';
+import { fetchAdminOverview } from '../slices/adminSlice';
 
 function StatCard({ label, value, hint, color = 'var(--neutral-900)' }) {
   return (
@@ -17,38 +18,13 @@ function StatCard({ label, value, hint, color = 'var(--neutral-900)' }) {
 }
 
 export default function AdminOverview() {
-  const [summary, setSummary] = useState(null);
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [recentPayments, setRecentPayments] = useState([]);
-  const [pendingOrganizers, setPendingOrganizers] = useState([]);
-  const [revenueData, setRevenueData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { overview, loading } = useSelector((s) => s.admin);
+  const { summary, recentEvents, recentPayments, pendingOrganizers, revenueData } = overview;
 
   useEffect(() => {
-    async function loadOverview() {
-      try {
-        const [summaryRes, eventsRes, paymentsRes, organizersRes, revenueRes] = await Promise.all([
-          axiosInstance.get('/reports/summary'),
-          axiosInstance.get('/reports/events?size=5'),
-          axiosInstance.get('/payments?size=5'),
-          axiosInstance.get('/organizer-profiles?status=PENDING&size=5'),
-          axiosInstance.get('/reports/revenue?groupBy=month'),
-        ]);
-
-        setSummary(summaryRes.data);
-        setRecentEvents(eventsRes.data.content || []);
-        setRecentPayments(paymentsRes.data.content || []);
-        setPendingOrganizers(organizersRes.data.content || []);
-        setRevenueData(revenueRes.data || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadOverview();
-  }, []);
+    dispatch(fetchAdminOverview());
+  }, [dispatch]);
 
   if (loading) {
     return <Spinner label="Loading dashboard..." />;

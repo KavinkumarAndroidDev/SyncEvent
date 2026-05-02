@@ -1,37 +1,20 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import { formatDate, formatDateTime, formatMoney } from '../../../utils/formatters';
 import Spinner from '../../../components/common/Spinner';
+import { fetchAttendeeOverview } from '../slices/attendeeSlice';
 
 export default function Overview() {
-  const [bookings, setBookings] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { overviewBookings: bookings, overviewPayments: payments, overviewLoading: loading } = useSelector((s) => s.attendee);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [bookRes, payRes] = await Promise.all([
-          axiosInstance.get('/bookings?size=100'), 
-          axiosInstance.get('/payments/my-payments?size=10')
-        ]);
-        
-        setBookings(bookRes.data.content || []);
-        setPayments(payRes.data.content || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+    dispatch(fetchAttendeeOverview());
+  }, [dispatch]);
 
   const upcomingEvents = useMemo(() => {
-    // Use eventStartTime (event's actual start date) not createdAt (booking date)
-    // Compare against start of today so events today + future are included
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return bookings
@@ -50,7 +33,6 @@ export default function Overview() {
       </header>
 
       <div className="overview-grid">
-        {/* Upcoming Events - Vertical Stack Item 1 */}
         <div className="overview-card">
           <div className="card-header" style={{ borderBottom: '1px solid var(--neutral-50)', paddingBottom: '20px', marginBottom: '20px' }}>
             <h3 style={{ fontSize: '18px' }}>Confirmed Upcoming Events</h3>
@@ -105,7 +87,6 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Recent Activity - Vertical Stack Item 2 */}
         <div className="overview-card">
           <div className="card-header" style={{ borderBottom: '1px solid var(--neutral-50)', paddingBottom: '20px', marginBottom: '20px' }}>
             <h3 style={{ fontSize: '18px' }}>Recent Transaction History</h3>

@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import Spinner from '../../../components/common/Spinner';
 import { useNavigate, useParams } from 'react-router-dom';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import { formatMoney } from '../../../utils/formatters';
 import OrgPageHeader from '../components/OrgPageHeader';
 import OrgToast from '../components/OrgToast';
 import { useToast } from '../components/orgHooks.jsx';
+import {
+  fetchOrganizerEditEvent,
+  saveOrganizerTicket,
+  updateOrganizerEvent,
+  updateOrganizerTicketStatus
+} from '../slices/organizerSlice';
 
 const EMPTY_FORM = {
   title: '',
@@ -32,13 +38,9 @@ function toLocalISO(dateString) {
 export default function OrganizerEditEvent() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [categories, setCategories] = useState([]);
-  const [venues, setVenues] = useState([]);
+  const dispatch = useDispatch();
+  const { categories, venues, tickets, loading, saving, ticketLoading } = useSelector((s) => s.organizer);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [tickets, setTickets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [ticketSaving, setTicketSaving] = useState(false);
   const { toast, showToast } = useToast();
   const [editingTicket, setEditingTicket] = useState(null);
   const [newTicket, setNewTicket] = useState(null);
@@ -46,19 +48,8 @@ export default function OrganizerEditEvent() {
   useEffect(() => {
     async function loadData() {
       try {
-        setLoading(true);
-        const [categoriesRes, venuesRes, eventRes, ticketsRes] = await Promise.all([
-          axiosInstance.get('/categories'),
-          axiosInstance.get('/venues'),
-          axiosInstance.get(`/events/${id}`),
-          axiosInstance.get(`/events/${id}/tickets`).catch(() => ({ data: [] })),
-        ]);
-
-        setCategories(categoriesRes.data?.content || categoriesRes.data || []);
-        setVenues(venuesRes.data?.content || venuesRes.data || []);
-        setTickets(Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.content || []));
-
-        const event = eventRes.data;
+        const data = await dispatch(fetchOrganizerEditEvent(id)).unwrap();
+        const event = data.event;
         const status = event.status || '';
         const isFuture = new Date(event.startTime) > new Date();
         const editable = !status || ['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(status);
@@ -80,19 +71,16 @@ export default function OrganizerEditEvent() {
           cancellationDeadline: toLocalISO(event.cancellationDeadline),
         });
       } catch (err) {
-        showToast(err.response?.data?.message || 'Failed to load event data.', 'error');
-      } finally {
-        setLoading(false);
+        showToast(err || 'Failed to load event data.', 'error');
       }
     }
     loadData();
-  }, [id]);
+  }, [dispatch, id, showToast]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     try {
-      setSaving(true);
-      await axiosInstance.put(`/events/${id}`, {
+      await dispatch(updateOrganizerEvent({ id, payload: {
         title: form.title,
         description: form.description,
         fullDescription: form.fullDescription,
@@ -101,66 +89,51 @@ export default function OrganizerEditEvent() {
         startTime: form.startTime,
         endTime: form.endTime,
         cancellationDeadline: form.cancellationDeadline || null,
-      });
+      }})).unwrap();
       showToast('Event updated successfully.');
       setTimeout(() => navigate('/organizer/events'), 1000);
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update event.', 'error');
+      showToast(err || 'Failed to update event.', 'error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      setSaving(false);
     }
   }
 
   async function handleAddTicket() {
     if (!newTicket?.name || !newTicket?.totalQuantity) return;
     try {
-      setTicketSaving(true);
-      const res = await axiosInstance.post(`/events/${id}/tickets`, {
+      await dispatch(saveOrganizerTicket({ eventId: id, form: {
         name: newTicket.name,
         price: Number(newTicket.price),
         totalQuantity: Number(newTicket.totalQuantity),
         saleStartTime: newTicket.saleStartTime,
         saleEndTime: newTicket.saleEndTime,
-      });
-      setTickets(prev => [...prev, res.data]);
+      }})).unwrap();
       setNewTicket(null);
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to add ticket tier.', 'error');
-    } finally {
-      setTicketSaving(false);
+      showToast(err || 'Failed to add ticket tier.', 'error');
     }
   }
 
   async function handleSaveTicket(t) {
     try {
-      setTicketSaving(true);
-      const res = await axiosInstance.put(`/tickets/${t.id}`, {
+      await dispatch(saveOrganizerTicket({ eventId: id, editingTicket: t, form: {
         name: editingTicket.name,
         price: Number(editingTicket.price),
         totalQuantity: Number(editingTicket.totalQuantity),
         saleStartTime: editingTicket.saleStartTime,
         saleEndTime: editingTicket.saleEndTime,
-      });
-      setTickets(prev => prev.map(tk => tk.id === t.id ? res.data : tk));
+      }})).unwrap();
       setEditingTicket(null);
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update ticket tier.', 'error');
-    } finally {
-      setTicketSaving(false);
+      showToast(err || 'Failed to update ticket tier.', 'error');
     }
   }
 
   async function handleToggleTicketStatus(t) {
     try {
-      setTicketSaving(true);
-      const newStatus = t.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      const res = await axiosInstance.patch(`/tickets/${t.id}/status`, { status: newStatus });
-      setTickets(prev => prev.map(tk => tk.id === t.id ? res.data : tk));
-    } catch (err) {
+      await dispatch(updateOrganizerTicketStatus(t)).unwrap();
+    } catch {
       showToast('Failed to update ticket status.', 'error');
-    } finally {
-      setTicketSaving(false);
     }
   }
 
@@ -292,8 +265,8 @@ export default function OrganizerEditEvent() {
                   <button onClick={() => setNewTicket(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>
                     Cancel
                   </button>
-                  <button onClick={handleAddTicket} disabled={ticketSaving} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    {ticketSaving ? 'Saving...' : 'Save Tier'}
+                  <button onClick={handleAddTicket} disabled={ticketLoading} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {ticketLoading ? 'Saving...' : 'Save Tier'}
                   </button>
                 </div>
               </div>
@@ -332,8 +305,8 @@ export default function OrganizerEditEvent() {
                         <button onClick={() => setEditingTicket(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--neutral-200)', background: 'white', fontSize: 13, cursor: 'pointer' }}>
                           Cancel
                         </button>
-                        <button onClick={() => handleSaveTicket(t)} disabled={ticketSaving} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          {ticketSaving ? 'Saving...' : 'Save'}
+                        <button onClick={() => handleSaveTicket(t)} disabled={ticketLoading} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          {ticketLoading ? 'Saving...' : 'Save'}
                         </button>
                       </div>
                     </div>
@@ -365,7 +338,7 @@ export default function OrganizerEditEvent() {
                           </button>
                           <button
                             onClick={() => handleToggleTicketStatus(t)}
-                            disabled={ticketSaving}
+                            disabled={ticketLoading}
                             style={{
                               padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
                               border: `1px solid ${t.status === 'ACTIVE' ? '#fca5a5' : '#86efac'}`,

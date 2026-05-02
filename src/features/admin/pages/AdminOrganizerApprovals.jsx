@@ -1,49 +1,48 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
 import Modal from '../../../components/ui/Modal';
 import { formatDate } from '../../../utils/formatters';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import {
+  fetchAdminOrganizerApprovals,
+  fetchAdminPendingOrganizerCount,
+  updateAdminOrganizerStatus
+} from '../slices/adminSlice';
 
 export default function AdminOrganizerApprovals() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { organizerApprovals: items, pendingOrganizerCount: pendingCount, loading, saving } = useSelector((s) => s.admin);
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize] = useState(10);
   const [confirm, setConfirm] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [selectedOrganizer, setSelectedOrganizer] = useState(null);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
-  const [pendingCount, setPendingCount] = useState(0);
 
   const loadOrganizers = useCallback(async () => {
     try {
-      setLoading(true);
-      const query = statusFilter === 'ALL' ? '/organizer-profiles?size=200' : `/organizer-profiles?status=${statusFilter}&size=200`;
-      const res = await axiosInstance.get(query);
-      setItems(res.data.content || []);
+      await dispatch(fetchAdminOrganizerApprovals(statusFilter)).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load requests.');
-    } finally {
-      setLoading(false);
+      setMessage(err || 'Failed to load requests.');
     }
-  }, [statusFilter]);
+  }, [dispatch, statusFilter]);
 
   useEffect(() => {
-    loadOrganizers();
-  }, [loadOrganizers]);
+    dispatch(fetchAdminOrganizerApprovals(statusFilter)).unwrap().catch((err) => {
+      setMessageType('error');
+      setMessage(err || 'Failed to load requests.');
+    });
+  }, [dispatch, statusFilter]);
 
   useEffect(() => {
-    axiosInstance.get('/organizer-profiles?status=PENDING&size=1')
-      .then(res => setPendingCount(res.data.totalElements || 0))
-      .catch(() => {});
-  }, [items]);
+    dispatch(fetchAdminPendingOrganizerCount());
+  }, [dispatch, items]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -57,18 +56,16 @@ export default function AdminOrganizerApprovals() {
 
   async function updateOrganizer(id, status) {
     try {
-      setSaving(true);
-      await axiosInstance.patch(`/organizer-profiles/${id}/status`, { status });
+      const msg = await dispatch(updateAdminOrganizerStatus({ id, status })).unwrap();
       setMessageType('success');
-      setMessage(`Organizer marked as ${status}.`);
+      setMessage(msg);
       setConfirm(null);
       setSelectedOrganizer(null);
       await loadOrganizers();
+      dispatch(fetchAdminPendingOrganizerCount());
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Update failed.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Update failed.');
     }
   }
 

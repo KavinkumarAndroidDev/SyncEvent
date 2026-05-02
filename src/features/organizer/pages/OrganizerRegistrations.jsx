@@ -1,18 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import { exportCsv } from '../../admin/utils/adminUtils';
 import { isEventActive } from '../utils/organizerHelpers';
-import { formatDateTime } from '../../../utils/formatters';
+import {
+  checkInOrganizerParticipant,
+  fetchOrganizerParticipants,
+  fetchOrganizerParticipantsEvents
+} from '../slices/organizerSlice';
 
 export default function OrganizerRegistrations() {
-  const [events, setEvents] = useState([]);
+  const dispatch = useDispatch();
+  const {
+    participantEvents: events,
+    participants,
+    loading: loadingEvents,
+    participantLoading: loadingParticipants,
+  } = useSelector((s) => s.organizer);
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [participants, setParticipants] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [loadingEvents, setLoadingEvents] = useState(true);
-  const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [toast, setToast] = useState({ msg: '', type: 'success' });
 
@@ -24,45 +31,34 @@ export default function OrganizerRegistrations() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        setLoadingEvents(true);
-        const { data } = await axiosInstance.get('/events?size=100&sort=startTime,desc');
-        const eventList = data.content || [];
-        setEvents(eventList);
+        const eventList = await dispatch(fetchOrganizerParticipantsEvents()).unwrap();
         if (eventList.length > 0) setSelectedEventId(eventList[0].id.toString());
       } catch (err) {
-        console.error('Failed to load events', err);
-      } finally {
-        setLoadingEvents(false);
+        showToast(err || 'Failed to load events', 'error');
       }
     }
     loadEvents();
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     async function loadParticipants() {
-      if (!selectedEventId) { setParticipants([]); return; }
+      if (!selectedEventId) return;
       try {
-        setLoadingParticipants(true);
-        const { data } = await axiosInstance.get(`/events/${selectedEventId}/participants?size=500`);
-        setParticipants(data.content || []);
+        await dispatch(fetchOrganizerParticipants(selectedEventId)).unwrap();
       } catch (err) {
-        console.error('Failed to load participants', err);
-        setParticipants([]);
-      } finally {
-        setLoadingParticipants(false);
+        showToast(err || 'Failed to load participants', 'error');
       }
     }
     loadParticipants();
-  }, [selectedEventId]);
+  }, [dispatch, selectedEventId]);
 
   const handleCheckIn = async (participantId) => {
     try {
       setUpdatingId(participantId);
-      await axiosInstance.patch(`/participants/${participantId}/status`, { status: 'CHECKED_IN' });
-      setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, status: 'CHECKED_IN' } : p));
+      await dispatch(checkInOrganizerParticipant(participantId)).unwrap();
       showToast('Attendee checked in successfully!');
     } catch (err) {
-      showToast(err.response?.data?.message || 'Check-in failed. Please try again.', 'error');
+      showToast(err || 'Check-in failed. Please try again.', 'error');
     } finally {
       setUpdatingId(null);
     }

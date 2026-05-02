@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime } from '../../../utils/formatters';
 import AdminConfirmModal from '../components/AdminConfirmModal';
-import { exportCsv } from '../utils/adminUtils';
+import {
+  fetchAdminBroadcasts,
+  fetchAdminInbox,
+  markAdminNotificationRead,
+  markAllAdminNotificationsRead,
+  sendAdminBroadcast
+} from '../slices/adminSlice';
 
 const EMPTY_FORM = {
   title: '',
@@ -14,70 +20,48 @@ const EMPTY_FORM = {
 };
 
 export default function AdminNotifications() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const dispatch = useDispatch();
+  const {
+    broadcasts: items,
+    inbox: personalNotifications,
+    saving,
+  } = useSelector((s) => s.admin);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize] = useState(10);
   const [confirm, setConfirm] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
   const [activeTab, setActiveTab] = useState('broadcast');
-  const [personalNotifications, setPersonalNotifications] = useState([]);
-  const [personalLoading, setPersonalLoading] = useState(false);
 
   async function loadHistory() {
     try {
-      setLoading(true);
-      const res = await axiosInstance.get('/notifications/broadcast-history?size=200');
-      setItems(res.data.content || []);
+      await dispatch(fetchAdminBroadcasts()).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage('Failed to load history.');
-    } finally {
-      setLoading(false);
+      setMessage(err || 'Failed to load history.');
     }
   }
 
   useEffect(() => {
     if (activeTab === 'broadcast') {
-      loadHistory();
+      dispatch(fetchAdminBroadcasts()).unwrap().catch((err) => {
+        setMessageType('error');
+        setMessage(err || 'Failed to load history.');
+      });
     } else {
-      loadInbox();
+      dispatch(fetchAdminInbox());
     }
-  }, [activeTab]);
-
-  async function loadInbox() {
-    try {
-      setPersonalLoading(true);
-      const res = await axiosInstance.get('/notifications?size=50');
-      setPersonalNotifications(res.data.content || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setPersonalLoading(false);
-    }
-  }
+  }, [activeTab, dispatch]);
 
   async function markRead(id) {
-    try {
-      await axiosInstance.patch(`/notifications/${id}/status`, { read: true });
-      setPersonalNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    } catch (err) {
-      console.error(err);
-    }
+    dispatch(markAdminNotificationRead(id));
   }
 
   async function markAllRead() {
-    try {
-      await axiosInstance.post('/notifications/read-all');
-      setPersonalNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    } catch (err) {
-      console.error(err);
-    }
+    dispatch(markAllAdminNotificationsRead());
   }
 
   const filteredItems = useMemo(() => {
@@ -98,23 +82,16 @@ export default function AdminNotifications() {
     }
 
     try {
-      setSaving(true);
-      await axiosInstance.post('/notifications/broadcast', {
-        title: form.title.trim(),
-        message: form.message.trim(),
-        targetRole: form.targetRole || null,
-      });
+      const msg = await dispatch(sendAdminBroadcast(form)).unwrap();
       setMessageType('success');
-      setMessage('Broadcast sent.');
+      setMessage(msg);
       setForm(EMPTY_FORM);
       setShowModal(false);
       setConfirm(null);
       await loadHistory();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Dispatch failed.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Dispatch failed.');
     }
   }
 
@@ -139,6 +116,8 @@ export default function AdminNotifications() {
           {activeTab === 'inbox' && <Button variant="secondary" onClick={markAllRead}>Clear Inbox</Button>}
         </div>
       </div>
+
+      {message && <div className={`alert ${messageType === 'success' ? 'alert-success' : 'alert-error'}`}>{message}</div>}
 
       <div style={{ display: 'flex', gap: 32, borderBottom: '1px solid var(--neutral-100)', marginBottom: 28 }}>
         <button onClick={() => setActiveTab('broadcast')} style={{ padding: '12px 0', border: 'none', background: 'none', borderBottom: activeTab === 'broadcast' ? '2px solid var(--primary)' : 'none', color: activeTab === 'broadcast' ? 'var(--primary)' : 'var(--neutral-400)', fontWeight: 600, cursor: 'pointer' }}>Sent Broadcasts</button>

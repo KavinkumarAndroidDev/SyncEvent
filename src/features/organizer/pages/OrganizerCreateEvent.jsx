@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import OrgPageHeader from '../components/OrgPageHeader';
 import OrgToast from '../components/OrgToast';
 import { useToast } from '../components/orgHooks.jsx';
+import { createOrganizerEvent, fetchOrganizerMetadata } from '../slices/organizerSlice';
 
 const EMPTY_TICKET = {
   name: '',
@@ -26,29 +27,23 @@ const EMPTY_FORM = {
 };
 
 export default function OrganizerCreateEvent() {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [categories, setCategories] = useState([]);
-  const [venues, setVenues] = useState([]);
+  const { categories, venues, saving } = useSelector((s) => s.organizer);
   const [form, setForm] = useState(EMPTY_FORM);
   const [tickets, setTickets] = useState([{ ...EMPTY_TICKET }]);
-  const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
   useEffect(() => {
     async function loadMetadata() {
       try {
-        const [categoriesRes, venuesRes] = await Promise.all([
-          axiosInstance.get('/categories'),
-          axiosInstance.get('/venues'),
-        ]);
-        setCategories(categoriesRes.data || []);
-        setVenues(venuesRes.data || []);
+        await dispatch(fetchOrganizerMetadata()).unwrap();
       } catch (err) {
-        showToast(err.response?.data?.message || 'Failed to load form data.', 'error');
+        showToast(err || 'Failed to load form data.', 'error');
       }
     }
     loadMetadata();
-  }, []);
+  }, [dispatch, showToast]);
 
   const totalCapacity = useMemo(() => {
     return tickets.reduce((sum, t) => sum + Number(t.totalQuantity || 0), 0);
@@ -107,8 +102,7 @@ export default function OrganizerCreateEvent() {
     }
     
     try {
-      setSaving(true);
-      await axiosInstance.post('/events', {
+      await dispatch(createOrganizerEvent({
         title: form.title,
         description: form.description,
         fullDescription: form.fullDescription,
@@ -125,16 +119,14 @@ export default function OrganizerCreateEvent() {
           saleStartTime: item.saleStartTime,
           saleEndTime: item.saleEndTime,
         })),
-      });
+      })).unwrap();
       showToast('Event created successfully.');
       setForm(EMPTY_FORM);
       setTickets([{ ...EMPTY_TICKET }]);
       navigate('/organizer/events');
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to create event.', 'error');
+      showToast(err || 'Failed to create event.', 'error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      setSaving(false);
     }
   }
 

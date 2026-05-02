@@ -1,26 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime } from '../../../utils/formatters';
+import { fetchAttendeeNotifications, markAllNotificationsRead, markNotificationRead } from '../slices/attendeeSlice';
 
 export default function AttendeeNotifications() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { notifications: items, notificationsLoading: loading, markingNotifications: marking } = useSelector((s) => s.attendee);
   const [search, setSearch] = useState('');
-  const [marking, setMarking] = useState(false);
 
-  async function loadNotifications() {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get('/notifications?size=200');
-      setItems(res.data?.content || []);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { loadNotifications(); }, []);
+  useEffect(() => { dispatch(fetchAttendeeNotifications()); }, [dispatch]);
 
   const unreadCount = useMemo(() => items.filter(item => !item.isRead).length, [items]);
   const filtered = useMemo(() => {
@@ -31,19 +21,12 @@ export default function AttendeeNotifications() {
     );
   }, [items, search]);
 
-  async function markRead(item) {
-    await axiosInstance.patch(`/notifications/${item.id}/status`, { isRead: true });
-    setItems(prev => prev.map(n => n.id === item.id ? { ...n, isRead: true } : n));
+  function markRead(item) {
+    dispatch(markNotificationRead(item));
   }
 
-  async function markAllRead() {
-    try {
-      setMarking(true);
-      await axiosInstance.post('/notifications/read-all');
-      setItems(prev => prev.map(n => ({ ...n, isRead: true })));
-    } finally {
-      setMarking(false);
-    }
+  function markAllRead() {
+    dispatch(markAllNotificationsRead());
   }
 
   if (loading) return <Spinner label="Loading notifications..." />;

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import { fetchMetadata } from '../../metadata/slices/metadataSlice';
 import Pagination from '../../../components/ui/Pagination';
 import Button from '../../../components/ui/Button';
@@ -9,14 +8,13 @@ import AdminEntityModal from '../components/AdminEntityModal';
 import AdminStatusBadge from '../components/AdminStatusBadge';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import { fetchAdminVenues, saveAdminVenue, updateAdminVenueStatus } from '../slices/adminSlice';
 
 const EMPTY_FORM = { name: '', address: '', city: '', state: '', capacity: '' };
 
 export default function AdminVenues() {
   const dispatch = useDispatch();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { venues: items, loading, saving } = useSelector((s) => s.admin);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name-asc');
   const [page, setPage] = useState(0);
@@ -29,22 +27,12 @@ export default function AdminVenues() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
 
-  async function loadVenues() {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get('/venues');
-      setItems(res.data || []);
-    } catch (err) {
-      setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load venues.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadVenues();
-  }, []);
+    dispatch(fetchAdminVenues()).unwrap().catch((err) => {
+      setMessageType('error');
+      setMessage(err || 'Failed to load venues.');
+    });
+  }, [dispatch]);
 
   const stats = useMemo(() => {
     const active = items.filter(i => i.status === 'ACTIVE').length;
@@ -143,42 +131,29 @@ export default function AdminVenues() {
     };
 
     try {
-      setSaving(true);
-      if (editingItem) {
-        await axiosInstance.put(`/venues/${editingItem.id}`, payload);
-        setMessageType('success');
-        setMessage('Venue updated successfully.');
-      } else {
-        await axiosInstance.post('/venues', payload);
-        setMessageType('success');
-        setMessage('Venue created successfully.');
-      }
+      const msg = await dispatch(saveAdminVenue({ editingItem, payload })).unwrap();
+      setMessageType('success');
+      setMessage(msg);
       closeModal();
-      await loadVenues();
+      await dispatch(fetchAdminVenues()).unwrap();
       dispatch(fetchMetadata());
       setConfirm(null);
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to save venue.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Unable to save venue.');
     }
   }
 
   async function toggleStatus(item) {
     try {
-      setSaving(true);
-      const nextStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      await axiosInstance.patch(`/venues/${item.id}/status`, { status: nextStatus });
+      const msg = await dispatch(updateAdminVenueStatus(item)).unwrap();
       setMessageType('success');
-      setMessage(`Venue marked as ${nextStatus.toLowerCase()}.`);
-      await loadVenues();
+      setMessage(msg);
+      await dispatch(fetchAdminVenues()).unwrap();
       dispatch(fetchMetadata());
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to update venue status.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Unable to update venue status.');
     }
   }
 

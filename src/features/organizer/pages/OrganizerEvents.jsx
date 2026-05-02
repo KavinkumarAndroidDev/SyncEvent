@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import { 
   getEventStatusLabel, 
   canSubmitForApproval, 
@@ -22,6 +22,15 @@ import OrgStatCard from '../components/OrgStatCard';
 import OrgToast from '../components/OrgToast';
 import OrgStatusBadge from '../components/OrgStatusBadge';
 import { useToast } from '../components/orgHooks.jsx';
+import {
+  checkInOrganizerParticipant,
+  fetchOrganizerEvents,
+  fetchOrganizerHub,
+  saveOrganizerTicket,
+  sendOrganizerAnnouncement,
+  updateOrganizerEventStatus,
+  updateOrganizerTicketStatus
+} from '../slices/organizerSlice';
 
 function getTicketDisplayStatus(item) {
   const now = new Date();
@@ -34,20 +43,23 @@ function getTicketDisplayStatus(item) {
 }
 
 export default function OrganizerEvents() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const {
+    events,
+    eventReports,
+    hubData,
+    loading,
+    hubLoading,
+    saving: updating,
+  } = useSelector((s) => s.organizer);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortFilter, setSortFilter] = useState('startTime,desc');
   const [search, setSearch] = useState('');
   
-  const [updating, setUpdating] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [manageEvent, setManageEvent] = useState(null);
   const [manageTab, setManageTab] = useState('overview');
-  const [hubData, setHubData] = useState({ participants: [], tickets: [], feedbacks: [], report: null });
-  const [hubLoading, setHubLoading] = useState(false);
   const { toast, showToast } = useToast();
-  const [eventReports, setEventReports] = useState({});
   const [openActionId, setOpenActionId] = useState(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const [editingTicket, setEditingTicket] = useState(null);
@@ -56,25 +68,11 @@ export default function OrganizerEvents() {
 
   const loadEvents = useCallback(async () => {
     try {
-      setLoading(true);
-      let query = `/events?size=500&sort=${sortFilter}`;
-      if (statusFilter !== 'ALL') query += `&status=${statusFilter}`;
-      const [eventsRes, reportsRes] = await Promise.all([
-        axiosInstance.get(query),
-        axiosInstance.get('/reports/events?size=500').catch(() => ({ data: { content: [] } }))
-      ]);
-      setEvents(eventsRes.data.content || []);
-      // Key by eventId (EventReportDTO field name)
-      const reportsMap = {};
-      (reportsRes.data?.content || []).forEach(r => { reportsMap[r.eventId] = r; });
-      setEventReports(reportsMap);
+      await dispatch(fetchOrganizerEvents({ statusFilter, sortFilter })).unwrap();
     } catch (err) {
-      console.error(err);
-      showToast('Failed to load events.', 'error');
-    } finally {
-      setLoading(false);
+      showToast(err || 'Failed to load events.', 'error');
     }
-  }, [sortFilter, statusFilter]);
+  }, [dispatch, sortFilter, statusFilter, showToast]);
 
   useEffect(() => {
     loadEvents();
@@ -82,25 +80,21 @@ export default function OrganizerEvents() {
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      setUpdating(true);
       if (newStatus === 'PUBLISHED') {
         const evt = events.find(e => e.id === id);
         if (evt && new Date(evt.startTime) < new Date()) {
           showToast('Cannot publish an event with a past start date.', 'error');
-          setUpdating(false);
           setConfirmModal(null);
           return;
         }
       }
-      await axiosInstance.patch(`/events/${id}/status`, { status: newStatus });
+      await dispatch(updateOrganizerEventStatus({ id, status: newStatus })).unwrap();
       showToast(`Status updated to ${getEventStatusLabel(newStatus)}.`);
       setConfirmModal(null);
       if (manageEvent?.id === id) setManageEvent(prev => ({ ...prev, status: newStatus }));
       await loadEvents();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update event status.', 'error');
-    } finally {
-      setUpdating(false);
+      showToast(err || 'Failed to update event status.', 'error');
     }
   };
 
@@ -115,56 +109,21 @@ export default function OrganizerEvents() {
   const openManageHub = async (event) => {
     setManageEvent(event);
     setManageTab('overview');
-    setHubLoading(true);
     setOpenActionId(null);
     try {
-      // Participants: GET /events/{eventId}/participants returns Page<ParticipantResponse>
-      // Tickets: GET /events/{eventId}/tickets returns List<TicketResponse> (plain array)
-      // Feedbacks: GET /events/{eventId}/feedbacks
-      // Report: GET /reports/events/{eventId}
-      const [partsRes, ticketsRes, feedbacksRes, reportRes] = await Promise.all([
-        axiosInstance.get(`/events/${event.id}/participants?size=200`).catch(() => ({ data: { content: [] } })),
-        axiosInstance.get(`/events/${event.id}/tickets`).catch(() => ({ data: [] })),
-        axiosInstance.get(`/events/${event.id}/feedbacks?size=100`).catch(() => ({ data: { content: [] } })),
-        axiosInstance.get(`/reports/events/${event.id}`).catch(() => ({ data: null })),
-      ]);
-
-      // ParticipantController returns Page<ParticipantResponse> — use .content
-      const participantsList = partsRes.data?.content || (Array.isArray(partsRes.data) ? partsRes.data : []);
-      // TicketController returns List<TicketResponse> — plain array
-      const ticketsList = Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.content || []);
-      const feedbacksList = feedbacksRes.data?.content || (Array.isArray(feedbacksRes.data) ? feedbacksRes.data : []);
-
-      setHubData({
-        participants: participantsList,
-        tickets: ticketsList,
-        feedbacks: feedbacksList,
-        report: reportRes.data
-      });
+      await dispatch(fetchOrganizerHub(event.id)).unwrap();
     } catch (err) {
-      console.error('Failed to load hub data', err);
-      showToast('Some event data could not be loaded.', 'error');
-    } finally {
-      setHubLoading(false);
+      showToast(err || 'Some event data could not be loaded.', 'error');
     }
   };
 
   const getTicketsSold = (item) => {
     if (!item) return 0;
-    // eventReports is keyed by eventId (Long from backend)
     const report = eventReports[item.id];
     if (report) return Number(report.confirmedRegistrations || 0);
     return 0;
   };
 
-  const getEventCapacity = (item) => {
-    if (!item) return '—';
-    const tickets = hubData.tickets;
-    if (manageEvent?.id === item.id && tickets.length) {
-      return tickets.reduce((s, t) => s + (t.totalQuantity || 0), 0);
-    }
-    return item.capacity || '—';
-  };
 
   const eventsStats = useMemo(() => ({
     total: events.length,
@@ -211,18 +170,14 @@ export default function OrganizerEvents() {
     const msg = e.target.message.value;
     if (!subject || !msg) return;
     try {
-      setUpdating(true);
-      await axiosInstance.post(`/events/${manageEvent.id}/notifications`, { subject, message: msg, isSystem: false });
+      await dispatch(sendOrganizerAnnouncement({ eventId: manageEvent.id, subject, message: msg })).unwrap();
       showToast('Update sent to all registered attendees!');
       e.target.reset();
     } catch (err) {
-      showToast('Failed to send the update. Please try again.', 'error');
-    } finally {
-      setUpdating(false);
+      showToast(err || 'Failed to send the update. Please try again.', 'error');
     }
   };
 
-  // Shared dropdown item style
   const menuItemStyle = {
     display: 'flex', alignItems: 'center', gap: 8,
     width: '100%', textAlign: 'left', padding: '9px 14px',
@@ -514,16 +469,9 @@ export default function OrganizerEvents() {
                                       return;
                                     }
                                     try {
-                                      setUpdating(true);
-                                      await axiosInstance.patch(`/participants/${p.id}/status`, { status: 'CHECKED_IN' });
-                                      setHubData(prev => ({
-                                        ...prev,
-                                        participants: prev.participants.map(item => item.id === p.id ? { ...item, status: 'CHECKED_IN' } : item)
-                                      }));
-                                    } catch (err) {
+                                      await dispatch(checkInOrganizerParticipant(p.id)).unwrap();
+                                    } catch {
                                       alert('Check-in failed.');
-                                    } finally {
-                                      setUpdating(false);
                                     }
                                   }} disabled={!checkInEnabled}>Check In</Button>
                                 )}
@@ -569,18 +517,16 @@ export default function OrganizerEvents() {
                               return;
                             }
                             try {
-                              setUpdating(true);
-                              const res = await axiosInstance.post(`/events/${manageEvent.id}/tickets`, {
+                              await dispatch(saveOrganizerTicket({ eventId: manageEvent.id, form: {
                                 name: newTicket.name,
                                 price: Number(newTicket.price),
                                 totalQuantity: Number(newTicket.totalQuantity),
-                              });
-                              setHubData(prev => ({ ...prev, tickets: [...prev.tickets, res.data] }));
+                              }})).unwrap();
                               setNewTicket(null);
                               showToast('Ticket tier added.');
                             } catch (err) {
-                              showToast(err.response?.data?.message || 'Failed to add ticket tier.', 'error');
-                            } finally { setUpdating(false); }
+                              showToast(err || 'Failed to add ticket tier.', 'error');
+                            }
                           }} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save Tier</button>
                         </div>
                       </div>
@@ -604,18 +550,16 @@ export default function OrganizerEvents() {
                                       showToast('Ticket price must be at least ₹1.', 'error');
                                       return;
                                     }
-                                    setUpdating(true);
-                                    const res = await axiosInstance.put(`/tickets/${t.id}`, {
+                                    await dispatch(saveOrganizerTicket({ eventId: manageEvent.id, editingTicket: t, form: {
                                       name: editingTicket.name,
                                       price: Number(editingTicket.price),
                                       totalQuantity: Number(editingTicket.totalQuantity),
-                                    });
-                                    setHubData(prev => ({ ...prev, tickets: prev.tickets.map(tk => tk.id === t.id ? res.data : tk) }));
+                                    }})).unwrap();
                                     setEditingTicket(null);
                                     showToast('Ticket tier updated.');
                                   } catch (err) {
-                                    showToast(err.response?.data?.message || 'Failed to update.', 'error');
-                                  } finally { setUpdating(false); }
+                                    showToast(err || 'Failed to update.', 'error');
+                                  }
                                 }} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
                               </div>
                             </div>
@@ -640,14 +584,12 @@ export default function OrganizerEvents() {
                                     </button>
                                     <button onClick={async () => {
                                       try {
-                                        setUpdating(true);
                                         const newStatus = t.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-                                        const res = await axiosInstance.patch(`/tickets/${t.id}/status`, { status: newStatus });
-                                        setHubData(prev => ({ ...prev, tickets: prev.tickets.map(tk => tk.id === t.id ? res.data : tk) }));
+                                        await dispatch(updateOrganizerTicketStatus(t)).unwrap();
                                         showToast(`Ticket ${newStatus === 'ACTIVE' ? 'activated' : 'suspended'}.`);
-                                      } catch (err) {
+                                      } catch {
                                         showToast('Failed to update ticket status.', 'error');
-                                      } finally { setUpdating(false); }
+                                      }
                                     }} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${t.status === 'ACTIVE' ? '#fca5a5' : '#86efac'}`, background: 'white', fontSize: 12, cursor: 'pointer', color: t.status === 'ACTIVE' ? '#ef4444' : '#16a34a' }}>
                                       {t.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
                                     </button>
@@ -712,3 +654,5 @@ export default function OrganizerEvents() {
     </div>
   );
 }
+
+

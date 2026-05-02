@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime } from '../../../utils/formatters';
@@ -8,31 +8,28 @@ import OrgStatCard from '../components/OrgStatCard';
 import OrgToast from '../components/OrgToast';
 import OrgEmptyState from '../components/OrgEmptyState';
 import { useToast } from '../components/orgHooks.jsx';
+import {
+  fetchOrganizerNotifications,
+  markAllOrganizerNotificationsRead,
+  markOrganizerNotificationRead
+} from '../slices/organizerSlice';
 
 export default function OrganizerNotifications() {
-  const [inbox, setInbox] = useState([]);
-  const [sent, setSent] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { inbox, sent, loading, saving: markingAll } = useSelector((s) => s.organizer);
   const { toast, showToast } = useToast();
   const [activeTab, setActiveTab] = useState('inbox');
   const [search, setSearch] = useState('');
-  const [markingAll, setMarkingAll] = useState(false);
 
   async function loadData() {
     try {
-      setLoading(true);
-      const notificationsRes = await axiosInstance.get('/notifications?size=200');
-      const allNotifs = notificationsRes.data?.content || [];
-      setInbox(allNotifs.filter(n => n.isSystem !== false));
-      setSent(allNotifs.filter(n => n.isSystem === false));
+      await dispatch(fetchOrganizerNotifications()).unwrap();
     } catch {
       showToast('Failed to load notification center.', 'error');
-    } finally {
-      setLoading(false);
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const unreadCount = useMemo(() => inbox.filter(n => !n.isRead).length, [inbox]);
 
@@ -47,22 +44,19 @@ export default function OrganizerNotifications() {
 
   async function markAsRead(item) {
     try {
-      await axiosInstance.patch(`/notifications/${item.id}/status`, { isRead: true });
-      setInbox(prev => prev.map(i => i.id === item.id ? { ...i, isRead: true } : i));
-    } catch (err) {}
+      await dispatch(markOrganizerNotificationRead(item.id)).unwrap();
+    } catch {
+      return;
+    }
   }
 
   async function markAllRead() {
     try {
-      setMarkingAll(true);
       const unread = inbox.filter(n => !n.isRead);
-      await Promise.all(unread.map(n => axiosInstance.patch(`/notifications/${n.id}/status`, { isRead: true }).catch(() => {})));
-      setInbox(prev => prev.map(i => ({ ...i, isRead: true })));
+      await dispatch(markAllOrganizerNotificationsRead(unread.map(n => n.id))).unwrap();
       showToast('All notifications marked as read.');
-    } catch (err) {
+    } catch {
       showToast('Some notifications could not be marked.', 'error');
-    } finally {
-      setMarkingAll(false);
     }
   }
 

@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Button from '../../../components/ui/Button';
 
 export function useToast(duration = 4000) {
   const [toast, setToast] = useState({ msg: '', type: 'success' });
 
-  const showToast = (msg, type = 'success') => {
+  const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: '', type: 'success' }), duration);
-  };
+  }, [duration]);
 
   return { toast, showToast };
 }

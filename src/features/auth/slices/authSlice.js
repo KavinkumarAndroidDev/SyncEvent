@@ -37,6 +37,16 @@ export const fetchCurrentUser = createAsyncThunk('auth/fetchMe', async (_, { rej
   }
 });
 
+export const updateCurrentUser = createAsyncThunk('auth/updateMe', async (profileForm, { rejectWithValue }) => {
+  try {
+    await axiosInstance.put('/users/me', profileForm);
+    const { data } = await axiosInstance.get('/users/me');
+    return await buildUserWithOrganizerStatus(data);
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Failed to update profile.');
+  }
+});
+
 export const loginUser = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   try {
     const { data } = await axiosInstance.post('/auth/login', credentials);
@@ -57,6 +67,14 @@ export const registerUser = createAsyncThunk('auth/register', async (userData, {
     return data;
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Registration failed');
+  }
+});
+
+export const registerOrganizer = createAsyncThunk('auth/registerOrganizer', async (payload, { rejectWithValue }) => {
+  try {
+    await axiosInstance.post('/auth/register/organizer', payload);
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Registration failed. Please try again.');
   }
 });
 
@@ -136,6 +154,15 @@ const authSlice = createSlice({
         state.initialized = true;
         clearAuthTokens();
       })
+      .addCase(updateCurrentUser.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(updateCurrentUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+      })
+      .addCase(updateCurrentUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
       .addCase(loginUser.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
@@ -153,6 +180,14 @@ const authSlice = createSlice({
         state.registerSuccess = true;
       })
       .addCase(registerUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(registerOrganizer.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(registerOrganizer.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(registerOrganizer.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

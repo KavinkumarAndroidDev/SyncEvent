@@ -1,53 +1,48 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useSelector } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { formatDate, formatDateTime } from '../../../utils/formatters';
 import { openPdfDocument } from '../../../utils/documentPrint';
 import Spinner from '../../../components/common/Spinner';
+import {
+  cancelAttendeeBooking,
+  clearCancelEvent,
+  clearSelectedBooking,
+  fetchAttendeeBookings,
+  fetchBookingDetails,
+  fetchCancelEvent
+} from '../slices/attendeeSlice';
 
 const PAGE_SIZE = 10;
 
 export default function MyRegistrations() {
+  const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedBooking, setSelectedBooking] = useState(null);
+  const {
+    bookings,
+    selectedBooking,
+    eventForCancel,
+    bookingsLoading: loading,
+    checkingDeadline,
+  } = useSelector((state) => state.attendee);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('newest');
   const [confirmCancel, setConfirmCancel] = useState(null);
-  const [eventForCancel, setEventForCancel] = useState(null);
-  const [checkingDeadline, setCheckingDeadline] = useState(false);
   const [page, setPage] = useState(0);
 
-  const fetchBookings = async () => {
-    try {
-      const res = await axiosInstance.get('/bookings?size=200');
-      setBookings(res.data.content || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchBookings();
-  }, []);
+    dispatch(fetchAttendeeBookings());
+  }, [dispatch]);
 
   useEffect(() => {
     if (confirmCancel) {
-      setCheckingDeadline(true);
-      axiosInstance.get(`/events/${confirmCancel.eventId}`)
-        .then(res => setEventForCancel(res.data))
-        .catch(() => setEventForCancel({ error: true }))
-        .finally(() => setCheckingDeadline(false));
+      dispatch(fetchCancelEvent(confirmCancel.eventId));
     } else {
-      setEventForCancel(null);
+      dispatch(clearCancelEvent());
     }
-  }, [confirmCancel]);
+  }, [confirmCancel, dispatch]);
 
   const canCancel = useMemo(() => {
     if (!eventForCancel || eventForCancel.error) return false;
@@ -58,11 +53,10 @@ export default function MyRegistrations() {
 
   const handleCancel = async (id) => {
     try {
-      await axiosInstance.patch(`/bookings/${id}/status`, { status: 'CANCELLED' });
+      await dispatch(cancelAttendeeBooking(id)).unwrap();
       setConfirmCancel(null);
-      fetchBookings();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to cancel booking.');
+      alert(err || 'Failed to cancel booking.');
     }
   };
 
@@ -112,8 +106,7 @@ export default function MyRegistrations() {
 
   const showPass = async (id) => {
     try {
-      const res = await axiosInstance.get(`/bookings/${id}`);
-      setSelectedBooking(res.data);
+      await dispatch(fetchBookingDetails(id)).unwrap();
     } catch {
       alert('Could not load pass details.');
     }
@@ -144,7 +137,6 @@ export default function MyRegistrations() {
         <h2 className="view-title">My Registrations</h2>
       </header>
 
-      {/* Filter Bar */}
       <div className="dashboard-filter-bar" style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <input
           type="text"
@@ -218,7 +210,6 @@ export default function MyRegistrations() {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="pagination" style={{ marginTop: '24px' }}>
           <button className="page-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
@@ -233,12 +224,11 @@ export default function MyRegistrations() {
         </div>
       )}
 
-      {/* Pass Modal */}
       {selectedBooking && (
         <Modal
           isOpen={!!selectedBooking}
           title={selectedBooking.status === 'CONFIRMED' ? 'Event Pass' : 'Registration Details'}
-          onClose={() => setSelectedBooking(null)}
+          onClose={() => dispatch(clearSelectedBooking())}
           actions={selectedBooking.status === 'CONFIRMED' ? <Button onClick={printPass}>Download Tickets</Button> : null}
         >
           <div className="pass-body">
@@ -281,7 +271,6 @@ export default function MyRegistrations() {
         </Modal>
       )}
 
-      {/* Cancel Modal */}
       {confirmCancel && (
         <Modal
           isOpen={!!confirmCancel}

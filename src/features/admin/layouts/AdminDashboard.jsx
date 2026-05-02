@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useEffect, useState } from 'react';
 import { logoutUser as logout } from '../../auth/slices/authSlice';
 import Modal from '../../../components/ui/Modal';
-import axiosInstance from '../../../lib/axios';
+import { fetchAdminCounts } from '../slices/adminSlice';
 
 const navItems = [
   {
@@ -63,40 +63,14 @@ const navItems = [
 
 export default function AdminDashboard() {
   const { user } = useSelector((s) => s.auth);
+  const { counts } = useSelector((s) => s.admin);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
-  const [counts, setCounts] = useState({
-    organizerApprovals: 0,
-    eventApprovals: 0,
-    notifications: 0,
-  });
 
   useEffect(() => {
-    async function loadCounts() {
-      try {
-        const [organizersRes, eventsRes, notificationsRes] = await Promise.all([
-          axiosInstance.get('/organizer-profiles?status=PENDING&size=1'),
-          axiosInstance.get('/events?status=PENDING_APPROVAL&size=1'),
-          axiosInstance.get('/notifications/unread-count'),
-        ]);
-
-        setCounts({
-          organizerApprovals: organizersRes.data?.totalElements || 0,
-          eventApprovals: eventsRes.data?.totalElements || 0,
-          notifications: notificationsRes.data?.unreadCount || 0,
-        });
-      } catch {
-        setCounts({
-          organizerApprovals: 0,
-          eventApprovals: 0,
-          notifications: 0,
-        });
-      }
-    }
-
-    loadCounts();
-  }, []);
+    dispatch(fetchAdminCounts());
+  }, [dispatch]);
 
   const handleLogout = () => {
     dispatch(logout());

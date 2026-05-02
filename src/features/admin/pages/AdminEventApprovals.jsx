@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import {
+  clearAdminSelectedEvent,
+  fetchAdminEventDetails,
+  fetchAdminEvents,
+  updateAdminEventStatus
+} from '../slices/adminSlice';
 
 const STATUS_LABELS = {
   PENDING_APPROVAL: 'Pending Approval',
@@ -16,36 +22,31 @@ const STATUS_LABELS = {
 };
 
 export default function AdminEventApprovals() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { events, loading, selectedEvent, selectedTickets, saving } = useSelector((s) => s.admin);
   const [statusFilter, setStatusFilter] = useState('PENDING_APPROVAL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [selectedTickets, setSelectedTickets] = useState([]);
   const [pageSize, setPageSize] = useState(10);
   const [confirm, setConfirm] = useState(null);
-  const [saving, setSaving] = useState(false);
 
   const loadEvents = useCallback(async () => {
     try {
-      setLoading(true);
-      const query = `/events?status=${statusFilter}&size=200&sort=startTime,asc`;
-      const res = await axiosInstance.get(query);
-      setEvents((res.data.content || []).map((item) => ({ ...item, status: item.status || statusFilter })));
+      await dispatch(fetchAdminEvents({ statusFilter, sortBy: 'oldest' })).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Failed to load events.');
-    } finally {
-      setLoading(false);
+      setMessage(err || 'Failed to load events.');
     }
-  }, [statusFilter]);
+  }, [dispatch, statusFilter]);
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    dispatch(fetchAdminEvents({ statusFilter, sortBy: 'oldest' })).unwrap().catch((err) => {
+      setMessageType('error');
+      setMessage(err || 'Failed to load events.');
+    });
+  }, [dispatch, statusFilter]);
 
   const filteredEvents = useMemo(() => {
     return [...events].filter((item) => {
@@ -59,18 +60,15 @@ export default function AdminEventApprovals() {
 
   async function updateStatus(eventId, status) {
     try {
-      setSaving(true);
-      await axiosInstance.patch(`/events/${eventId}/status`, { status });
+      const msg = await dispatch(updateAdminEventStatus({ id: eventId, status })).unwrap();
       setMessageType('success');
-      setMessage(`Event marked as ${status}.`);
+      setMessage(msg);
       await loadEvents();
-      setSelectedEvent(null);
+      dispatch(clearAdminSelectedEvent());
       setConfirm(null);
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Could not update event status.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Could not update event status.');
     }
   }
 
@@ -84,15 +82,10 @@ export default function AdminEventApprovals() {
 
   async function openEvent(id) {
     try {
-      const [res, ticketRes] = await Promise.all([
-        axiosInstance.get(`/events/${id}`),
-        axiosInstance.get(`/events/${id}/tickets`).catch(() => ({ data: [] })),
-      ]);
-      setSelectedEvent({ ...res.data, status: res.data.status || statusFilter });
-      setSelectedTickets(ticketRes.data || []);
+      await dispatch(fetchAdminEventDetails({ id, statusFilter })).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Could not load event details.');
+      setMessage(err || 'Could not load event details.');
     }
   }
 
@@ -195,7 +188,7 @@ export default function AdminEventApprovals() {
       <Modal
         isOpen={!!selectedEvent}
         title={selectedEvent?.title || 'Event Details'}
-        onClose={() => setSelectedEvent(null)}
+        onClose={() => dispatch(clearAdminSelectedEvent())}
         maxWidth="800px"
         actions={
           <div style={{ display: 'flex', gap: 12 }}>
@@ -208,7 +201,7 @@ export default function AdminEventApprovals() {
             {['PUBLISHED', 'APPROVED'].includes(selectedEvent?.status) && (
               <Button variant="secondary" onClick={() => askStatus(selectedEvent, 'CANCELLED')} loading={saving}>Cancel</Button>
             )}
-            <Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>
+            <Button variant="table" onClick={() => dispatch(clearAdminSelectedEvent())}>Close</Button>
           </div>
         }
       >

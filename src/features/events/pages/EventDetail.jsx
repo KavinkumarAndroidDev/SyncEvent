@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
+import { fetchEventDetail } from '../slices/eventsSlice';
 
 const colors = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
 function getColor(id) { return colors[(id || 0) % colors.length]; }
@@ -10,34 +10,20 @@ function getColor(id) { return colors[(id || 0) % colors.length]; }
 export default function EventDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { user, token } = useSelector((s) => s.auth);
-  const [event, setEvent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { detail: event, activeBooking, detailLoading: loading, detailError: error } = useSelector((s) => s.events);
   const [showAlert, setShowAlert] = useState(false);
-  const [activeBooking, setActiveBooking] = useState(null); // pending/incomplete booking
 
   useEffect(() => {
-    // 1. Fetch Event Details
-    axiosInstance.get(`/events/${id}`)
-      .then((res) => { setEvent(res.data); setLoading(false); })
-      .catch(() => { setError('Could not load event details.'); setLoading(false); });
-
-    // 2. Check for active pending booking if logged in (to show Resume Payment)
-    if (token && user?.role === 'ATTENDEE') {
-        axiosInstance.get(`/bookings/event/${id}/active`)
-            .then(res => setActiveBooking(res.data))
-            .catch(() => setActiveBooking(null));
-    }
-  }, [id, token, user]);
+    dispatch(fetchEventDetail({ id, token, user }));
+  }, [dispatch, id, token, user]);
 
   const handleBookClick = () => {
     if (!token || user?.role !== 'ATTENDEE') { setShowAlert(true); return; }
     if (activeBooking) {
-        // Resume existing PENDING booking
         navigate(`/booking/${id}`, { state: { resumeBookingId: activeBooking.id } });
     } else {
-        // New booking
         navigate(`/booking/${id}`);
     }
   };

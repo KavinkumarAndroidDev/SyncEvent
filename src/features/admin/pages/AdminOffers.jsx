@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import AdminConfirmModal from '../components/AdminConfirmModal';
 import { exportCsv } from '../utils/adminUtils';
+import {
+  fetchAdminOfferEvents,
+  fetchAdminOffers,
+  saveAdminOffer,
+  updateAdminOfferStatus
+} from '../slices/adminSlice';
 
 const EMPTY_FORM = { code: '', discountPercentage: '', maxDiscountAmount: '', validFrom: '', validTo: '', totalUsageLimit: '' };
 
@@ -22,9 +28,9 @@ function getOfferStatus(item) {
 }
 
 export default function AdminOffers() {
-  const [events, setEvents] = useState([]);
+  const dispatch = useDispatch();
+  const { offerEvents: events, offers, loading, saving } = useSelector((s) => s.admin);
   const [eventId, setEventId] = useState('');
-  const [offers, setOffers] = useState([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -32,30 +38,19 @@ export default function AdminOffers() {
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [confirm, setConfirm] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
 
   useEffect(() => {
-    axiosInstance.get('/events?size=200')
-      .then((res) => {
-        const now = new Date();
-        const list = (res.data.content || []).filter(e => new Date(e.endTime || e.startTime) > now);
-        setEvents(list);
-        if (list[0]) setEventId(String(list[0].id));
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    dispatch(fetchAdminOfferEvents()).unwrap().then((list) => {
+      if (list[0]) setEventId(String(list[0].id));
+    });
+  }, [dispatch]);
 
   useEffect(() => {
     if (!eventId) return;
-    setLoading(true);
-    axiosInstance.get(`/events/${eventId}/offers`)
-      .then((res) => setOffers(res.data || []))
-      .catch(() => setOffers([]))
-      .finally(() => setLoading(false));
-  }, [eventId]);
+    dispatch(fetchAdminOffers(eventId));
+  }, [dispatch, eventId]);
 
   const offerStats = useMemo(() => {
     const active = offers.filter(o => getOfferStatus(o) === 'ACTIVE').length;
@@ -94,52 +89,27 @@ export default function AdminOffers() {
   async function saveOffer() {
     if ((!editingItem && (!form.code.trim() || !form.discountPercentage)) || !form.validFrom || !form.validTo) return;
     try {
-      setSaving(true);
-      if (editingItem) {
-        await axiosInstance.put(`/offers/${editingItem.id}`, {
-          validFrom: form.validFrom,
-          validTo: form.validTo,
-          totalUsageLimit: form.totalUsageLimit ? Number(form.totalUsageLimit) : null,
-        });
-        setMessageType('success');
-        setMessage('Offer updated successfully.');
-      } else {
-        await axiosInstance.post(`/events/${eventId}/offers`, {
-          code: form.code.trim(),
-          discountPercentage: Number(form.discountPercentage),
-          maxDiscountAmount: form.maxDiscountAmount ? Number(form.maxDiscountAmount) : null,
-          validFrom: form.validFrom,
-          validTo: form.validTo,
-          totalUsageLimit: form.totalUsageLimit ? Number(form.totalUsageLimit) : null,
-        });
-        setMessageType('success');
-        setMessage('Offer created successfully.');
-      }
+      const msg = await dispatch(saveAdminOffer({ eventId, editingItem, form })).unwrap();
+      setMessageType('success');
+      setMessage(msg);
       setShowModal(false);
-      const res = await axiosInstance.get(`/events/${eventId}/offers`);
-      setOffers(res.data || []);
+      await dispatch(fetchAdminOffers(eventId)).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to save offer.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Unable to save offer.');
     }
   }
 
   async function updateStatus(item, status) {
     try {
-      setSaving(true);
-      await axiosInstance.patch(`/offers/${item.id}/status`, { status });
+      const msg = await dispatch(updateAdminOfferStatus({ item, status })).unwrap();
       setMessageType('success');
-      setMessage(`Offer marked as ${status}.`);
+      setMessage(msg);
       setConfirm(null);
-      const res = await axiosInstance.get(`/events/${eventId}/offers`);
-      setOffers(res.data || []);
+      await dispatch(fetchAdminOffers(eventId)).unwrap();
     } catch (err) {
       setMessageType('error');
-      setMessage(err.response?.data?.message || 'Unable to update offer status.');
-    } finally {
-      setSaving(false);
+      setMessage(err || 'Unable to update offer status.');
     }
   }
 

@@ -1,64 +1,42 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Modal from '../../../components/ui/Modal';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import { exportCsv } from '../utils/adminUtils';
 import Spinner from '../../../components/common/Spinner';
+import {
+  clearAdminSelectedEvent,
+  fetchAdminEventDetails,
+  fetchAdminEvents,
+  fetchAdminEventsStats,
+  updateAdminEventStatus
+} from '../slices/adminSlice';
 
 export default function AdminEvents() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const {
+    events,
+    loading,
+    selectedEvent,
+    selectedTickets,
+    eventsStats: stats,
+    saving: updating,
+  } = useSelector((s) => s.admin);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [selectedTickets, setSelectedTickets] = useState([]);
-  const [stats, setStats] = useState({ total: 0, published: 0, pending: 0, cancelled: 0 });
-  const [updating, setUpdating] = useState(false);
+  const [pageSize] = useState(10);
 
   const loadStats = useCallback(async () => {
-    try {
-      const [summaryRes, pendingRes, cancelledRes] = await Promise.all([
-        axiosInstance.get('/reports/summary').catch(() => ({ data: {} })),
-        axiosInstance.get('/events?status=PENDING_APPROVAL&size=1').catch(() => ({ data: { totalElements: 0 } })),
-        axiosInstance.get('/events?status=CANCELLED&size=1').catch(() => ({ data: { totalElements: 0 } }))
-      ]);
-
-      const summary = summaryRes.data || {};
-      setStats({
-        total: summary.totalEvents || 0,
-        published: summary.publishedEvents || 0,
-        pending: pendingRes.data?.totalElements || 0,
-        cancelled: cancelledRes.data?.totalElements || 0
-      });
-    } catch (err) {
-      console.error('Failed to load stats:', err);
-    }
-  }, []);
+    dispatch(fetchAdminEventsStats());
+  }, [dispatch]);
 
   const loadEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-      let sortParam = 'startTime,desc';
-      if (sortBy === 'oldest') sortParam = 'startTime,asc';
-      else if (sortBy === 'title-asc') sortParam = 'title,asc';
-      else if (sortBy === 'status') sortParam = 'status,asc';
-
-      let query = `/events?size=200&sort=${sortParam}`;
-      if (statusFilter !== 'ALL') query += `&status=${statusFilter}`;
-
-      const res = await axiosInstance.get(query);
-      setEvents(res.data.content || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, sortBy]);
+    dispatch(fetchAdminEvents({ statusFilter, sortBy }));
+  }, [dispatch, statusFilter, sortBy]);
 
   useEffect(() => {
     loadStats();
@@ -80,28 +58,20 @@ export default function AdminEvents() {
 
   async function openEvent(id) {
     try {
-      const [res, ticketRes] = await Promise.all([
-        axiosInstance.get(`/events/${id}`),
-        axiosInstance.get(`/events/${id}/tickets`).catch(() => ({ data: [] })),
-      ]);
-      setSelectedEvent(res.data);
-      setSelectedTickets(ticketRes.data || []);
-    } catch (err) {
+      await dispatch(fetchAdminEventDetails({ id, statusFilter })).unwrap();
+    } catch {
       alert('Could not load event details.');
     }
   }
 
   async function updateEventStatus(id, status) {
     try {
-      setUpdating(true);
-      await axiosInstance.patch(`/events/${id}/status`, { status });
+      await dispatch(updateAdminEventStatus({ id, status })).unwrap();
       await loadEvents();
       await loadStats();
-      setSelectedEvent(null);
+      dispatch(clearAdminSelectedEvent());
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update status');
-    } finally {
-      setUpdating(false);
+      alert(err || 'Failed to update status');
     }
   }
 
@@ -194,7 +164,7 @@ export default function AdminEvents() {
       <Modal
         isOpen={!!selectedEvent}
         title="Event Details"
-        onClose={() => setSelectedEvent(null)}
+        onClose={() => dispatch(clearAdminSelectedEvent())}
         maxWidth="900px"
         actions={
           <div style={{ display: 'flex', gap: 12 }}>
@@ -210,7 +180,7 @@ export default function AdminEvents() {
             {selectedEvent?.status === 'PUBLISHED' && (
               <Button variant="secondary" onClick={() => updateEventStatus(selectedEvent.id, 'CANCELLED')} loading={updating}>Cancel</Button>
             )}
-            <Button variant="table" onClick={() => setSelectedEvent(null)}>Close</Button>
+            <Button variant="table" onClick={() => dispatch(clearAdminSelectedEvent())}>Close</Button>
           </div>
         }
       >

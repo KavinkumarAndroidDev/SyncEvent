@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import BookingHeader from '../components/BookingHeader';
 import StepIndicator from '../components/StepIndicator';
 import TicketCard from '../components/TicketCard';
@@ -22,15 +21,25 @@ import {
   buildParticipantRows,
   validateParticipantRows,
 } from '../utils/bookingHelpers';
+import {
+  createBookingPayment,
+  fetchBookingPayment,
+  fetchBookingStart,
+  fetchResumeBooking,
+  markPaymentFailed,
+  previewBooking,
+  retryBookingPayment,
+  verifyPayment
+} from '../slices/bookingSlice';
 
 export default function BookingPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   const { user, token } = useSelector((s) => s.auth);
+  const { event, tickets } = useSelector((s) => s.booking);
 
-  const [event, setEvent] = useState(null);
-  const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState('tickets');
   const [cart, setCart] = useState({});
@@ -77,51 +86,37 @@ export default function BookingPage() {
       const resumeBookingId = location.state?.resumeBookingId || draft?.currentBookingId;
 
       try {
-        const [eventRes, ticketsRes] = await Promise.all([
-          axiosInstance.get(`/events/${id}`),
-          axiosInstance.get(`/events/${id}/tickets`),
-        ]);
-
-        const ticketList = ticketsRes.data || [];
-        setEvent(eventRes.data);
-        setTickets(ticketList);
+        const start = await dispatch(fetchBookingStart(id)).unwrap();
+        const ticketList = start.tickets || [];
         setDiscountCode(draft?.discountCode || '');
 
         if (resumeBookingId) {
-          const bookingRes = await axiosInstance.get(`/bookings/${resumeBookingId}`);
-          const paymentRes = await axiosInstance.get(`/payments/${resumeBookingId}`).catch(() => ({ data: null }));
-          const booking = bookingRes.data;
+          const resume = await dispatch(fetchResumeBooking({ id, resumeBookingId, offerCode: draft?.discountCode })).unwrap();
+          const booking = resume.booking;
           const restoredCart = buildCartFromItems(booking.items || []);
 
           setCart(restoredCart);
           setCurrentBookingId(booking.id);
-          setPaymentInfo(paymentRes.data);
+          setPaymentInfo(resume.payment);
           setIsResuming(true);
           setLockedBooking(true);
           setParticipantsInfo(buildParticipantRows(restoredCart, ticketList, draft?.participantsInfo || []));
           setStep('payment');
 
-          if (paymentRes.data?.status === 'FAILED') {
+          if (resume.payment?.status === 'FAILED') {
             setResumeMessage('Your previous payment failed. Review the summary and try again.');
           } else {
             setResumeMessage('You already have a pending booking for this event. Continue the payment below.');
           }
 
-          if ((booking.items || []).length > 0) {
-            const previewRes = await axiosInstance.post('/bookings/preview', {
-              eventId: Number(id),
-              items: (booking.items || []).map((item) => ({ ticketId: item.ticketId, qty: item.quantity })),
-              offerCode: draft?.discountCode?.trim() || null,
-            });
-            setPreview(previewRes.data);
-          }
+          setPreview(resume.preview);
         } else if (draft?.cart) {
           setCart(draft.cart);
           setParticipantsInfo(buildParticipantRows(draft.cart, ticketList, draft.participantsInfo || []));
           setStep(draft.step || 'tickets');
         }
       } catch (err) {
-        console.error(err);
+      setPreviewError(err || 'Could not load booking.');
       } finally {
         setLoading(false);
       }
@@ -132,7 +127,7 @@ export default function BookingPage() {
     } else {
       setLoading(false);
     }
-  }, [id, location.state, token, user]);
+  }, [dispatch, id, location.state, token, user]);
 
   function resetMessages() {
     setPreviewError('');
@@ -222,13 +217,13 @@ export default function BookingPage() {
   }
 
   async function requestPreview(nextOfferCode) {
-    const res = await axiosInstance.post('/bookings/preview', {
+    const data = await dispatch(previewBooking({
       eventId: Number(id),
       items: getItems(),
       offerCode: nextOfferCode,
-    });
-    setPreview(res.data);
-    return res.data;
+    })).unwrap();
+    setPreview(data);
+    return data;
   }
 
   async function handleProceed() {
@@ -268,7 +263,7 @@ export default function BookingPage() {
 
     try {
       await requestPreview(discountCode.trim() || null);
-      setStep('payment');
+      setStep('payment'); 
     } catch (err) {
       setPreviewError(err.response?.data?.message || 'Could not get booking preview. Please try again.');
     } finally {
@@ -280,7 +275,7 @@ export default function BookingPage() {
     if (!bookingId || !orderId) return;
 
     try {
-      await axiosInstance.post('/payments/fail', { bookingId, razorpayOrderId: orderId });
+      await dispatch(markPaymentFailed({ bookingId, razorpayOrderId: orderId })).unwrap();
       setPaymentInfo((prev) => ({ ...prev, status: 'FAILED', razorpayOrderId: orderId }));
     } catch {
       return;
@@ -303,12 +298,12 @@ export default function BookingPage() {
       order_id: orderId,
       handler: async (response) => {
         try {
-          await axiosInstance.post('/payments/verify', {
+          await dispatch(verifyPayment({
             bookingId,
             razorpayOrderId: response.razorpay_order_id,
             razorpayPaymentId: response.razorpay_payment_id,
             razorpaySignature: response.razorpay_signature,
-          });
+          })).unwrap();
 
           clearBookingDraft(id);
           setSuccessBookingId(bookingId);
@@ -364,58 +359,31 @@ export default function BookingPage() {
       let amount = preview?.totalAmount || rawTotal;
 
       if (!bookingId) {
-        const bookingRes = await axiosInstance.post('/bookings', {
+        const created = await dispatch(createBookingPayment({
           eventId: Number(id),
           items: getItems(),
           offerCode: discountCode.trim() || null,
-        });
+          participantsInfo,
+        })).unwrap();
 
-        bookingId = bookingRes.data.bookingId;
-        orderId = bookingRes.data.razorpayOrderId;
-        amount = bookingRes.data.amount;
+        bookingId = created.bookingId;
+        orderId = created.orderId;
+        amount = created.amount;
         freshBookingId = bookingId;
         freshOrderId = orderId;
 
-        const detailsRes = await axiosInstance.get(`/bookings/${bookingId}`);
-        const participantPayload = [];
-        let participantIndex = 0;
-
-        (detailsRes.data.items || []).forEach((item) => {
-          for (let i = 0; i < item.quantity; i += 1) {
-            const participant = participantsInfo[participantIndex];
-            participantIndex += 1;
-
-            if (!participant) continue;
-
-            participantPayload.push({
-              registrationItemId: item.id,
-              eventId: Number(id),
-              name: participant.name.trim(),
-              email: participant.email.trim(),
-              phone: participant.phone.replace(/\D/g, ''),
-              gender: participant.gender,
-            });
-          }
-        });
-
-        if (participantPayload.length) {
-          await axiosInstance.post('/participants', participantPayload);
-        }
-
-        const paymentRes = await axiosInstance.get(`/payments/${bookingId}`).catch(() => ({ data: null }));
         setCurrentBookingId(bookingId);
-        setPaymentInfo(paymentRes.data || { razorpayOrderId: orderId, status: 'PENDING', amount });
+        setPaymentInfo(created.payment);
         setIsResuming(true);
         setLockedBooking(true);
       } else if (paymentInfo?.status === 'FAILED') {
-        const retryRes = await axiosInstance.post('/payments/retry', { bookingId });
-        orderId = retryRes.data.razorpayOrderId;
+        orderId = await dispatch(retryBookingPayment(bookingId)).unwrap();
         setPaymentInfo((prev) => ({ ...prev, razorpayOrderId: orderId, status: 'PENDING' }));
       } else if (!orderId) {
-        const paymentRes = await axiosInstance.get(`/payments/${bookingId}`);
-        orderId = paymentRes.data?.razorpayOrderId || '';
-        amount = paymentRes.data?.amount || amount;
-        setPaymentInfo(paymentRes.data);
+        const payment = await dispatch(fetchBookingPayment(bookingId)).unwrap();
+        orderId = payment?.razorpayOrderId || '';
+        amount = payment?.amount || amount;
+        setPaymentInfo(payment);
       }
 
       openRazorpay(bookingId, orderId, amount);
@@ -424,7 +392,7 @@ export default function BookingPage() {
         await markFailed(freshBookingId, freshOrderId);
       }
 
-      const serverMsg = err.response?.data?.message || err.message || 'Failed to complete booking. Please try again.';
+      const serverMsg = err.message || err || 'Failed to complete booking. Please try again.';
       const lowerMessage = serverMsg.toLowerCase();
 
       if (lowerMessage.includes('ticket sale has ended') || lowerMessage.includes('not enough tickets available')) {

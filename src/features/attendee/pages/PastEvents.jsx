@@ -1,84 +1,33 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useSelector } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { formatDate } from '../../../utils/formatters';
 import Spinner from '../../../components/common/Spinner';
+import { fetchPastAttendeeEvents, submitAttendeeFeedback } from '../slices/attendeeSlice';
 
 const PAGE_SIZE = 6;
 
 export default function PastEvents() {
+  const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    pastEvents: events,
+    submittedFeedbacks,
+    pastEventsLoading: loading,
+    feedbackSubmitting: submitting,
+  } = useSelector((s) => s.attendee);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [rating, setRating] = useState('5');
-  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
-  const [submittedFeedbacks, setSubmittedFeedbacks] = useState(new Set());
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const res = await axiosInstance.get('/bookings?size=200');
-        const past = (res.data.content || []).filter(b =>
-          b.status === 'CONFIRMED' && b.eventStartTime && new Date(b.eventStartTime) < new Date()
-        );
-        const uniqueEvents = [];
-        const seen = new Set();
-        past.forEach(b => {
-          if (!seen.has(b.eventId)) {
-            seen.add(b.eventId);
-            uniqueEvents.push(b);
-          }
-        });
-        const submitted = new Set();
-        const withLocations = await Promise.all(uniqueEvents.map(async (item) => {
-          let currentItem = item;
-          if (!item.venueName && !item.eventLocation && !item.city) {
-            try {
-              const eventRes = await axiosInstance.get(`/events/${item.eventId}`);
-              currentItem = {
-                ...item,
-                venueName: eventRes.data?.venueName,
-                eventLocation: eventRes.data?.address,
-                city: eventRes.data?.city,
-              };
-            } catch {
-              currentItem = item;
-            }
-          }
-          try {
-            const feedbackRes = await axiosInstance.get(`/events/${item.eventId}/feedbacks?size=100`);
-            const feedbacks = feedbackRes.data?.content || [];
-            const hasFeedback = feedbacks.some(f =>
-              f.userId === user?.id ||
-              f.attendeeId === user?.id ||
-              f.userEmail === user?.email ||
-              f.email === user?.email ||
-              f.userName === user?.fullName
-            );
-            if (hasFeedback) submitted.add(item.eventId);
-          } catch (err) {
-            console.error(err);
-          }
-          return currentItem;
-        }));
-        setEvents(withLocations);
-        setSubmittedFeedbacks(submitted);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchEvents();
-  }, [user?.id, user?.email, user?.fullName]);
+    dispatch(fetchPastAttendeeEvents(user));
+  }, [dispatch, user]);
 
   const filteredEvents = useMemo(() => {
     let result = events.filter(e =>
@@ -94,13 +43,12 @@ export default function PastEvents() {
 
   const handleSubmitFeedback = async () => {
     if (!feedback.trim()) return;
-    setSubmitting(true);
     try {
-      await axiosInstance.post(`/events/${selectedEvent.eventId}/feedbacks`, {
+      await dispatch(submitAttendeeFeedback({
+        eventId: selectedEvent.eventId,
         rating: Number(rating),
-        comment: feedback.trim(),
-      });
-      setSubmittedFeedbacks(prev => new Set(prev).add(selectedEvent.eventId));
+        comment: feedback.trim()
+      })).unwrap();
       setShowSuccess(true);
       setTimeout(() => {
         setSelectedEvent(null);
@@ -110,8 +58,6 @@ export default function PastEvents() {
       }, 2000);
     } catch {
       alert('Failed to submit feedback.');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -151,7 +97,7 @@ export default function PastEvents() {
           </div>
         ) : (
           pagedEvents.map(ev => {
-            const isSubmitted = submittedFeedbacks.has(ev.eventId);
+            const isSubmitted = submittedFeedbacks.includes(ev.eventId);
             return (
               <div key={ev.id} className="past-event-card" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid var(--neutral-100)' }}>
                 <div className="pe-badge" style={{ background: 'var(--neutral-50)', color: 'var(--neutral-400)' }}>PAST</div>

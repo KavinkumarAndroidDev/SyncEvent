@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Spinner from '../../../components/common/Spinner';
 import { formatDateTime } from '../../../utils/formatters';
 import { averageRating } from '../utils/organizerHelpers';
+import { fetchOrganizerReviews, fetchOrganizerReviewsEvents } from '../slices/organizerSlice';
 
 function StarRow({ rating, max = 5 }) {
   return (
@@ -31,46 +32,36 @@ function reviewBadgeClass(status) {
 }
 
 export default function OrganizerReviews() {
-  const [events, setEvents] = useState([]);
+  const dispatch = useDispatch();
+  const { reviewEvents: events, reviews: items, loading } = useSelector((s) => s.organizer);
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [ratingFilter, setRatingFilter] = useState(0); // 0 = all
 
   useEffect(() => {
     async function loadEvents() {
       try {
-        setLoading(true);
-        const res = await axiosInstance.get('/reports/events?size=200');
-        const eventItems = res.data?.content || [];
-        setEvents(eventItems);
+        const eventItems = await dispatch(fetchOrganizerReviewsEvents()).unwrap();
         if (eventItems.length) setSelectedEventId(String(eventItems[0].eventId));
       } catch (err) {
-        setMessage(err.response?.data?.message || 'Failed to load events.');
-      } finally {
-        setLoading(false);
+        setMessage(err || 'Failed to load events.');
       }
     }
     loadEvents();
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     async function loadReviews() {
       if (!selectedEventId) return;
       try {
-        setLoading(true);
-        const res = await axiosInstance.get(`/events/${selectedEventId}/feedbacks?size=100`);
-        setItems(res.data?.content || []);
+        await dispatch(fetchOrganizerReviews(selectedEventId)).unwrap();
         setRatingFilter(0);
       } catch (err) {
-        setMessage(err.response?.data?.message || 'Failed to load reviews.');
-      } finally {
-        setLoading(false);
+        setMessage(err || 'Failed to load reviews.');
       }
     }
     loadReviews();
-  }, [selectedEventId]);
+  }, [dispatch, selectedEventId]);
 
   const stats = useMemo(() => ({
     total: items.length,
@@ -96,13 +87,7 @@ export default function OrganizerReviews() {
 
   async function refreshReviews() {
     if (!selectedEventId) return;
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get(`/events/${selectedEventId}/feedbacks?size=100`);
-      setItems(res.data?.content || []);
-    } finally {
-      setLoading(false);
-    }
+    await dispatch(fetchOrganizerReviews(selectedEventId));
   }
 
   if (loading && !events.length && !selectedEventId) return <Spinner label="Loading reviews..." />;

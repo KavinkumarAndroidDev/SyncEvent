@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { clearError } from '../slices/authSlice';
-import axiosInstance from '../../../lib/axios';
+import { clearError, registerOrganizer } from '../slices/authSlice';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 
 export default function RegisterOrganizer() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { error } = useSelector((s) => s.auth);
+  const { error, loading } = useSelector((s) => s.auth);
 
   const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
@@ -79,7 +77,6 @@ export default function RegisterOrganizer() {
       return;
     }
 
-    setLoading(true);
     setApiError('');
 
     try {
@@ -102,12 +99,10 @@ export default function RegisterOrganizer() {
       if (form.phone) payload.phone = form.phone;
       if (form.gender) payload.gender = form.gender;
 
-      await axiosInstance.post('/auth/register/organizer', payload);
+      await dispatch(registerOrganizer(payload)).unwrap();
       navigate('/login', { state: { message: 'Organizer account created! Please log in.' } });
     } catch (err) {
-      setApiError(err.response?.data?.message || 'Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
+      setApiError(err || 'Registration failed. Please try again.');
     }
   };
 

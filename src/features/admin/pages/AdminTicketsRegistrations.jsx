@@ -1,59 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
 import { formatDateTime, formatMoney } from '../../../utils/formatters';
 import { exportCsv } from '../utils/adminUtils';
+import { fetchAdminTicketSales, fetchAdminTicketsEvents } from '../slices/adminSlice';
 
 export default function AdminTicketsRegistrations() {
-  const [events, setEvents] = useState([]);
-  const [ticketSales, setTicketSales] = useState([]);
+  const dispatch = useDispatch();
+  const { ticketsEvents: events, ticketSales, loading, detailLoading: detailsLoading } = useSelector((s) => s.admin);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [detailsLoading, setDetailsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [timeRange, setTimeRange] = useState('ALL');
 
   useEffect(() => {
-    async function loadReports() {
-      try {
-        setLoading(true);
-        const res = await axiosInstance.get('/reports/events?size=200');
-        const list = res.data.content || [];
-        setEvents(list);
-        if (list[0]) {
-          setSelectedEvent(list[0]);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadReports();
-  }, []);
+    dispatch(fetchAdminTicketsEvents()).unwrap().then((list) => {
+      if (list[0]) setSelectedEvent(list[0]);
+    });
+  }, [dispatch]);
 
   useEffect(() => {
-    async function loadTicketSales() {
-      if (!selectedEvent?.eventId) return;
-
-      try {
-        setDetailsLoading(true);
-        const res = await axiosInstance.get(`/reports/events/${selectedEvent.eventId}/tickets`);
-        setTicketSales(res.data || []);
-      } catch (err) {
-        console.error(err);
-        setTicketSales([]);
-      } finally {
-        setDetailsLoading(false);
-      }
-    }
-
-    loadTicketSales();
-  }, [selectedEvent]);
+    if (!selectedEvent?.eventId) return;
+    dispatch(fetchAdminTicketSales(selectedEvent.eventId));
+  }, [dispatch, selectedEvent]);
 
   const filteredEvents = useMemo(() => {
     let result = events.filter((item) => item.eventTitle?.toLowerCase().includes(search.toLowerCase()));

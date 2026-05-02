@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useSelector } from 'react-redux';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import SharedProfilePage from '../../../components/shared/SharedProfilePage';
 import Button from '../../../components/ui/Button';
 import Spinner from '../../../components/common/Spinner';
 import Modal from '../../../components/ui/Modal';
+import { fetchOrganizerProfile, updateOrganizerProfile } from '../slices/organizerSlice';
 
 const FIELD_LABEL = {
   fontSize: 11, fontWeight: 700, color: 'var(--neutral-400)',
@@ -17,12 +17,11 @@ const CARD = {
 };
 
 export default function OrganizerProfile() {
+  const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
-  const [profile, setProfile] = useState(null);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const { profile, loading: profileLoading, saving } = useSelector((s) => s.organizer);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
-  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ msg: '', type: 'success' });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
@@ -34,30 +33,20 @@ export default function OrganizerProfile() {
 
   useEffect(() => {
     if (!user?.id) return;
-    axiosInstance.get(`/users/${user.id}/organizer-profile`)
-      .then(({ data }) => { setProfile(data); setEditData(data); })
-      .catch(() => {})
-      .finally(() => setProfileLoading(false));
-  }, [user?.id]);
+    dispatch(fetchOrganizerProfile(user.id)).unwrap().then((data) => setEditData(data)).catch(() => {});
+  }, [dispatch, user?.id]);
 
   const handleSave = async () => {
     if (!user?.id) return;
     try {
-      setSaving(true);
-      const { data } = await axiosInstance.put(`/users/${user.id}/organizer-profile`, {
-        ...editData,
-        currentPassword: confirmPassword,
-      });
-      setProfile(data);
+      const data = await dispatch(updateOrganizerProfile({ userId: user.id, editData, confirmPassword })).unwrap();
       setEditData(data);
       setIsEditing(false);
       setShowConfirm(false);
       setConfirmPassword('');
       showToast('Organization profile saved.');
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save. Check your password.', 'error');
-    } finally {
-      setSaving(false);
+      showToast(err || 'Failed to save. Check your password.', 'error');
     }
   };
 

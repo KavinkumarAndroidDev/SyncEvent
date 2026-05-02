@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Button from '../../../components/ui/Button';
 import { formatMoney } from '../../../utils/formatters';
 import { exportCsv } from '../utils/adminUtils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { fetchAdminReports } from '../slices/adminSlice';
 
 function StatBox({ label, value }) {
   return (
@@ -15,59 +16,17 @@ function StatBox({ label, value }) {
 }
 
 export default function AdminReports() {
-  const [summary, setSummary] = useState(null);
-  const [revenue, setRevenue] = useState([]);
-  const [organizers, setOrganizers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { reports, loading } = useSelector((s) => s.admin);
+  const { summary, revenue, organizers, categoryData } = reports;
   const [timeRange, setTimeRange] = useState('30d');
-  const [categoryData, setCategoryData] = useState([]);
   const [organizerSort, setOrganizerSort] = useState({ key: 'organizerName', direction: 'asc' });
 
   const COLORS = ['#17B978', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
   useEffect(() => {
-    async function loadReports() {
-      try {
-        setLoading(true);
-        const now = new Date();
-        let from = new Date();
-        let groupBy = 'month';
-
-        if (timeRange === '7d') { from.setDate(now.getDate() - 7); groupBy = 'day'; }
-        else if (timeRange === '30d') { from.setDate(now.getDate() - 30); groupBy = 'day'; }
-        else if (timeRange === '6m') { from.setMonth(now.getMonth() - 6); groupBy = 'month'; }
-        else { from.setFullYear(now.getFullYear() - 1); groupBy = 'month'; }
-
-        const fromStr = from.toISOString().split('T')[0];
-        const toStr = now.toISOString().split('T')[0];
-
-        const [summaryRes, revenueRes, organizerRes, eventsRes] = await Promise.all([
-          axiosInstance.get('/reports/summary'),
-          axiosInstance.get(`/reports/revenue?from=${fromStr}&to=${toStr}&groupBy=${groupBy}`),
-          axiosInstance.get('/reports/organizers?size=100'),
-          axiosInstance.get('/events?size=500')
-        ]);
-
-        setSummary(summaryRes.data);
-        setRevenue(revenueRes.data || []);
-        setOrganizers(organizerRes.data.content || []);
-
-        // Process Category Data
-        const catMap = {};
-        (eventsRes.data.content || []).forEach(e => {
-          const cat = e.categoryName || 'Uncategorized';
-          catMap[cat] = (catMap[cat] || 0) + 1;
-        });
-        setCategoryData(Object.entries(catMap).map(([name, value]) => ({ name, value })));
-
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadReports();
-  }, [timeRange]);
+    dispatch(fetchAdminReports(timeRange));
+  }, [dispatch, timeRange]);
 
   const sortedOrganizers = [...organizers].sort((a, b) => {
     const aVal = a[organizerSort.key] || 0;

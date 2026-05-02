@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import axiosInstance from '../../../lib/axios';
+import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Pagination from '../../../components/ui/Pagination';
@@ -15,20 +15,28 @@ import OrgToast from '../components/OrgToast';
 import OrgPeriodFilter from '../components/OrgPeriodFilter';
 import OrgStatusBadge from '../components/OrgStatusBadge';
 import { useToast } from '../components/orgHooks.jsx';
+import {
+  clearOrganizerReportModal,
+  fetchOrganizerReportDetails,
+  fetchOrganizerReports
+} from '../slices/organizerSlice';
 
 const COLORS = ['#17B978', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function OrganizerReports() {
-  const [summary, setSummary] = useState({});
-  const [items, setItems] = useState([]);
+  const dispatch = useDispatch();
+  const {
+    reportsSummary: summary,
+    reportsItems: items,
+    selectedReport,
+    selectedRevenue,
+    selectedTickets,
+    modalLoading,
+    loading,
+  } = useSelector((s) => s.organizer);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [period, setPeriod] = useState('ALL');
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [selectedRevenue, setSelectedRevenue] = useState(null);
-  const [selectedTickets, setSelectedTickets] = useState([]);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const { toast, showToast } = useToast();
   const pageSize = 10;
@@ -36,21 +44,13 @@ export default function OrganizerReports() {
   useEffect(() => {
     async function loadData() {
       try {
-        setLoading(true);
-        const [summaryRes, reportsRes] = await Promise.all([
-          axiosInstance.get('/reports/summary'),
-          axiosInstance.get('/reports/events?size=500'),
-        ]);
-        setSummary(summaryRes.data || {});
-        setItems(reportsRes.data?.content || []);
+        await dispatch(fetchOrganizerReports()).unwrap();
       } catch (err) {
-        showToast(err.response?.data?.message || 'Failed to load reports.', 'error');
-      } finally {
-        setLoading(false);
+        showToast(err || 'Failed to load reports.', 'error');
       }
     }
     loadData();
-  }, []);
+  }, [dispatch, showToast]);
 
   const filteredItems = useMemo(() => {
     const now = new Date();
@@ -114,21 +114,9 @@ export default function OrganizerReports() {
 
   async function openReport(item) {
     try {
-      setSelectedReport({ eventTitle: item.eventTitle, attendanceRate: item.attendanceRate, _loading: true });
-      setModalLoading(true);
-      const [reportRes, revenueRes, ticketsRes] = await Promise.all([
-        axiosInstance.get(`/reports/events/${item.eventId}`),
-        axiosInstance.get(`/reports/events/${item.eventId}/revenue`),
-        axiosInstance.get(`/reports/events/${item.eventId}/tickets`),
-      ]);
-      setSelectedReport(reportRes.data);
-      setSelectedRevenue(revenueRes.data);
-      setSelectedTickets(ticketsRes.data || []);
-    } catch (err) {
+      await dispatch(fetchOrganizerReportDetails(item.eventId)).unwrap();
+    } catch {
       showToast('Failed to load event report.', 'error');
-      setSelectedReport(null);
-    } finally {
-      setModalLoading(false);
     }
   }
 
@@ -272,9 +260,9 @@ export default function OrganizerReports() {
       <Modal
         isOpen={!!selectedReport}
         title={selectedReport ? `Event Report: ${selectedReport.eventTitle}` : ''}
-        onClose={() => { setSelectedReport(null); setSelectedRevenue(null); setSelectedTickets([]); }}
+        onClose={() => dispatch(clearOrganizerReportModal())}
         maxWidth="950px"
-        actions={<Button variant="table" onClick={() => { setSelectedReport(null); setSelectedRevenue(null); setSelectedTickets([]); }}>Close</Button>}
+        actions={<Button variant="table" onClick={() => dispatch(clearOrganizerReportModal())}>Close</Button>}
       >
         {modalLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
